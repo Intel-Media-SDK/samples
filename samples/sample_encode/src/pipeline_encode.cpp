@@ -1587,7 +1587,10 @@ void CEncodingPipeline::PrintInfo()
     GetFirstSession().QueryIMPL(&impl);
 
     const msdk_char* sImpl = (MFX_IMPL_VIA_D3D11 == MFX_IMPL_VIA_MASK(impl)) ? MSDK_STRING("hw_d3d11")
-                     : (MFX_IMPL_HARDWARE & impl)  ? MSDK_STRING("hw")
+                     : (MFX_IMPL_HARDWARE  & impl) ? MSDK_STRING("hw1")
+                     : (MFX_IMPL_HARDWARE2 & impl) ? MSDK_STRING("hw2")
+                     : (MFX_IMPL_HARDWARE3 & impl) ? MSDK_STRING("hw3")
+                     : (MFX_IMPL_HARDWARE4 & impl) ? MSDK_STRING("hw4")
                                                    : MSDK_STRING("sw");
     msdk_printf(MSDK_STRING("Media SDK impl\t\t%s\n"), sImpl);
 

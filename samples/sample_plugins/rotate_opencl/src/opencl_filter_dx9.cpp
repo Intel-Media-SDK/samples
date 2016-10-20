@@ -32,7 +32,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #define CL_DX9_MEDIA_SHARING_INTEL_EXT
 
 #include <CL/opencl.h>
-#include <CL/cl_d3d9.h>
+#include <CL/cl_dx9_media_sharing.h>
 
 using std::endl;
 

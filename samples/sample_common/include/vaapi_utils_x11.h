@@ -37,11 +37,26 @@ public:
 
     MfxLoader::XLib_Proxy  & GetX11() { return m_x11lib; }
     MfxLoader::VA_X11Proxy & GetVAX11() { return m_vax11lib; }
+#if defined(X11_DRI3_SUPPORT)
+    MfxLoader::Xcb_Proxy & GetXcbX11() { return m_xcblib; }
+    MfxLoader::X11_Xcb_Proxy & GetX11XcbX11() { return m_x11xcblib; }
+    MfxLoader::XCB_Dri3_Proxy   & GetXCBDri3X11() { return m_xcbdri3lib; }
+    MfxLoader::Xcbpresent_Proxy & GetXcbpresentX11() { return m_xcbpresentlib; }
+    MfxLoader::DrmIntel_Proxy & GetDrmIntelX11() { return m_drmintellib; }
+#endif // X11_DRI3_SUPPORT
 
 protected:
     Display* m_display;
     MfxLoader::XLib_Proxy   m_x11lib;
     MfxLoader::VA_X11Proxy  m_vax11lib;
+#if defined(X11_DRI3_SUPPORT)
+    MfxLoader::VA_DRMProxy  m_vadrmlib;
+    MfxLoader::Xcb_Proxy    m_xcblib;
+    MfxLoader::X11_Xcb_Proxy    m_x11xcblib;
+    MfxLoader::XCB_Dri3_Proxy   m_xcbdri3lib;
+    MfxLoader::Xcbpresent_Proxy m_xcbpresentlib;
+    MfxLoader::DrmIntel_Proxy   m_drmintellib;
+#endif // X11_DRI3_SUPPORT
 
 private:
     DISALLOW_COPY_AND_ASSIGN(X11LibVA);

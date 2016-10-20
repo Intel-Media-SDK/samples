@@ -24,6 +24,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "sample_multi_transcode.h"
 
+#if defined(LIBVA_WAYLAND_SUPPORT)
+#include "class_wayland.h"
+#endif
+
 using namespace std;
 using namespace TranscodingSample;
 
@@ -128,6 +132,8 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
 #elif defined(LIBVA_X11_SUPPORT) || defined(LIBVA_DRM_SUPPORT)
     if (m_eDevType == MFX_HANDLE_VA_DISPLAY)
     {
+        mfxI32  libvaBackend = 0;
+
         m_pAllocParam.reset(new vaapiAllocatorParams);
         vaapiAllocatorParams *pVAAPIParams = dynamic_cast<vaapiAllocatorParams*>(m_pAllocParam.get());
         /* The last param set in vector always describe VPP+ENCODE or Only VPP
@@ -135,6 +141,7 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
         if (m_InputParamsArray[m_InputParamsArray.size() -1].eModeExt == VppCompOnly)
         {
             sInputParams& params = m_InputParamsArray[m_InputParamsArray.size() -1];
+            libvaBackend = params.libvaBackend;
 
             /* Rendering case */
             m_hwdev.reset(CreateVAAPIDevice(params.libvaBackend));
@@ -147,7 +154,27 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
                 CVAAPIDeviceDRM* drmdev = dynamic_cast<CVAAPIDeviceDRM*>(m_hwdev.get());
                 pVAAPIParams->m_export_mode = vaapiAllocatorParams::CUSTOM_FLINK;
                 pVAAPIParams->m_exporter = dynamic_cast<vaapiAllocatorParams::Exporter*>(drmdev->getRenderer());
+
             }
+#if defined(LIBVA_WAYLAND_SUPPORT)
+            else if (params.libvaBackend == MFX_LIBVA_WAYLAND) {
+                VADisplay va_dpy = NULL;
+                sts = m_hwdev->GetHandle(MFX_HANDLE_VA_DISPLAY, (mfxHDL *)&va_dpy);
+                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                hdl = pVAAPIParams->m_dpy =(VADisplay)va_dpy;
+
+                mfxHDL whdl = NULL;
+                mfxHandleType hdlw_t = (mfxHandleType)HANDLE_WAYLAND_DRIVER;
+                Wayland *wld;
+                sts = m_hwdev->GetHandle(hdlw_t, &whdl);
+                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                wld = (Wayland*)whdl;
+                wld->SetRenderWinPos(params.nRenderWinX, params.nRenderWinY);
+                wld->SetPerfMode(params.bPerfMode);
+
+                pVAAPIParams->m_export_mode = vaapiAllocatorParams::PRIME;
+            }
+#endif // LIBVA_WAYLAND_SUPPORT
             params.m_hwdev = m_hwdev.get();
         }
         else /* NO RENDERING*/
@@ -159,12 +186,13 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
             }
             sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber());
         }
-
+        if (libvaBackend != MFX_LIBVA_WAYLAND) {
         MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
         sts = m_hwdev->GetHandle(MFX_HANDLE_VA_DISPLAY, (mfxHDL*)&hdl);
         MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
         // set Device to external vaapi allocator
         pVAAPIParams->m_dpy =(VADisplay)hdl;
+    }
     }
 #endif
     if (!m_pAllocParam.get())
@@ -303,6 +331,8 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
             msdk_printf(MSDK_STRING("Session %d was joined with other sessions\n"), i);
         else
             msdk_printf(MSDK_STRING("Session %d was NOT joined with other sessions\n"), i);
+
+        m_pSessionArray[i]->pPipeline->SetPipelineID(i);
     }
 
     msdk_printf(MSDK_STRING("\n"));
@@ -455,6 +485,15 @@ mfxStatus Launcher::VerifyCrossSessionsOptions()
         // All sessions have to know about timeout
         if (m_InputParamsArray[i].nTimeout && (m_InputParamsArray[i].eMode == Sink))
         {
+            for (mfxU32 j = 0; j < m_InputParamsArray.size(); j++)
+            {
+                if (m_InputParamsArray[j].MaxFrameNumber != MFX_INFINITE)
+                {
+                    msdk_printf(MSDK_STRING("\"-timeout\" option isn't compatible with \"-n\". \"-n\" will be ignored.\n"));
+                    for (mfxU32 j = 0; j < m_InputParamsArray.size(); j++)
+                        m_InputParamsArray[j].MaxFrameNumber = MFX_INFINITE;
+                }
+            }
             msdk_printf(MSDK_STRING("Timeout %d seconds has been set to all sessions\n"), m_InputParamsArray[i].nTimeout);
             for (mfxU32 j = 0; j < m_InputParamsArray.size(); j++)
                 m_InputParamsArray[j].nTimeout = m_InputParamsArray[i].nTimeout;
@@ -652,12 +691,14 @@ int main(int argc, char *argv[])
     Launcher transcode;
     sts = transcode.Init(argc, argv);
     fflush(stdout);
+    fflush(stderr);
     MSDK_CHECK_PARSE_RESULT(sts, MFX_ERR_NONE, 1);
 
     transcode.Run();
 
     sts = transcode.ProcessResult();
     fflush(stdout);
+    fflush(stderr);
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
 
     return 0;

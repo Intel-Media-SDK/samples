@@ -890,7 +890,7 @@ mfxStatus AVCHeadersBitstream::GetSequenceParamSetExtension(AVCSeqParamSetExtens
     // Not all members of the seq param set structure are contained in all
     // seq param sets. So start by init all to zero.
     mfxStatus ps = MFX_ERR_NONE;
-    memset(sps_ex, 0, sizeof(AVCSeqParamSetExtension));
+    sps_ex->Reset();
 
     mfxU32 seq_parameter_set_id = GetVLCElement(false);
     sps_ex->seq_parameter_set_id = (mfxU8)seq_parameter_set_id;
@@ -2078,7 +2078,7 @@ mfxI32 AVCHeadersBitstream::GetSEI(const HeaderSet<AVCSeqParamSet> & sps, mfxI32
 
     avcGetNBits(m_pbs, m_bitOffset, 8, last_payload_size_byte);
     payloadSize += last_payload_size_byte;
-    memset(spl, 0, sizeof(AVCSEIPayLoad));
+    spl->Reset();
     spl->payLoadSize = payloadSize;
 
     if (payloadType < 0 || payloadType > SEI_RESERVED)

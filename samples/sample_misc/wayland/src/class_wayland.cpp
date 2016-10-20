@@ -186,6 +186,11 @@ void Wayland::RenderBuffer(struct wl_buffer *buffer
     wl_proxy_set_queue((struct wl_proxy *) m_callback, m_event_queue);
     wl_surface_commit(m_surface);
     wl_display_dispatch_queue(m_display, m_event_queue);
+    /* Force a Sync before and after render to ensure client handles
+      wayland events in a timely fashion. This also fixes the one time
+      flicker issue on wl_shell_surface pointer enter */
+    Sync();
+
 }
 
 void Wayland::RenderBufferWinPosSize(struct wl_buffer *buffer

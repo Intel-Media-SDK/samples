@@ -149,6 +149,14 @@ mfxStatus CamSysMemFrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
         ptr->PitchHigh = (mfxU16)((8 * (mfxU32)Width2) / (1 << 16));
         ptr->PitchLow  = (mfxU16)((8 * (mfxU32)Width2) % (1 << 16));
         break;
+    case MFX_FOURCC_ABGR16:
+        ptr->Y16 = (mfxU16*)ptr->B;
+        ptr->U16 = ptr->Y16 + 1;
+        ptr->V16 = ptr->Y16 + 2;
+        ptr->A = (mfxU8*)(ptr->Y16 + 3);
+        ptr->PitchHigh = (mfxU16)((8 * (mfxU32)Width2) / (1 << 16));
+        ptr->PitchLow  = (mfxU16)((8 * (mfxU32)Width2) % (1 << 16));
+        break;
    case MFX_FOURCC_R16:
         ptr->Y16 = (mfxU16 *)ptr->B;
         ptr->Pitch = 2 * Width2;
@@ -222,6 +230,7 @@ mfxStatus CamSysMemFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxF
         nbytes = Width2*Height2 + Width2*Height2 + Width2*Height2 + Width2*Height2;
         break;
     case MFX_FOURCC_ARGB16:
+    case MFX_FOURCC_ABGR16:
         nbytes = (Width2*Height2 + Width2*Height2 + Width2*Height2 + Width2*Height2) << 1;
         break;
     case MFX_FOURCC_YUY2:

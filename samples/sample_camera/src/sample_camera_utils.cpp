@@ -178,6 +178,143 @@ mfxStatus InitSurfaces(sMemoryAllocator* pAllocator, mfxFrameAllocRequest* pRequ
 
 /* ******************************************************************* */
 
+mfxStatus CARGB16VideoReader::Init(sInputParams* pParams)
+{
+    Close();
+
+#if defined (WIN32) || defined(WIN64)
+    WIN32_FILE_ATTRIBUTE_DATA ffi;
+    if ( GetFileAttributesEx(pParams->strSrcFile, GetFileExInfoStandard, &ffi) )
+    {
+       m_bSingleFileMode = true;
+    }
+#endif
+    msdk_strcopy(m_FileNameBase, pParams->strSrcFile);
+    m_FileNum = 0;
+
+    m_Width  = pParams->frameInfo->nWidth;
+    m_Height = pParams->frameInfo->nHeight;
+
+    return MFX_ERR_NONE;
+}
+
+CARGB16VideoReader::~CARGB16VideoReader()
+{
+    Close();
+}
+
+void CARGB16VideoReader::Close()
+{
+    if (m_fSrc != 0)
+    {
+        fclose(m_fSrc);
+        m_fSrc = 0;
+    }
+}
+
+mfxStatus CARGB16VideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type)
+{
+    return ( m_bSingleFileMode ) ? LoadNextFrameSingle(pData, pInfo, type) : LoadNextFrameSequential(pData, pInfo, type);
+}
+
+mfxStatus CARGB16VideoReader::LoadNextFrameSingle(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32)
+{
+    MSDK_CHECK_POINTER(pData, MFX_ERR_NOT_INITIALIZED);
+    MSDK_CHECK_POINTER(pInfo, MFX_ERR_NOT_INITIALIZED);
+
+    if ( m_FileNum )
+    {
+        // File has been read already
+        return MFX_ERR_MORE_DATA;
+    }
+
+    MSDK_FOPEN(m_fSrc, m_FileNameBase, MSDK_STRING("rb"));
+    MSDK_CHECK_POINTER(m_fSrc, MFX_ERR_MORE_DATA);
+
+    mfxI32 w, h, i, pitch;
+    mfxI32 nBytesRead;
+    mfxU16 *ptr = MSDK_MIN(MSDK_MIN(pData->Y16,pData->V16), pData->U16);
+
+    w = m_Width;
+    h = m_Height;
+    int shift = 16 - pInfo->BitDepthLuma;
+    pitch = (mfxI32)(pData->Pitch >> 1);
+    for (i = 0; i < h; i++)
+    {
+#if defined(_WIN32) || defined(_WIN64)
+        nBytesRead = (mfxI32)fread_s(ptr + i * pitch, pData->Pitch, sizeof(mfxU16), 4*w, m_fSrc);
+#else
+        nBytesRead = (mfxI32)fread(ptr + i * pitch, sizeof(mfxU16), 4*w, m_fSrc);
+#endif
+        IOSTREAM_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+
+        for (int j = 0; j < 4*w; j++)
+            ptr[i*pitch + j] = ptr[i*pitch + j] << shift;
+    }
+    pData->FrameOrder = m_FileNum;
+    m_FileNum++;
+    fclose(m_fSrc);
+
+    return MFX_ERR_NONE;
+}
+
+mfxStatus CARGB16VideoReader::LoadNextFrameSequential(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type)
+{
+    MSDK_CHECK_POINTER(pData, MFX_ERR_NOT_INITIALIZED);
+    MSDK_CHECK_POINTER(pInfo, MFX_ERR_NOT_INITIALIZED);
+
+    int filenameIndx = m_FileNum;
+
+    msdk_char fname[MSDK_MAX_FILENAME_LEN];
+
+    const msdk_char *pExt;
+    switch (type) {
+    case MFX_FOURCC_ARGB16:
+        pExt = MSDK_STRING("argb16");
+        break;
+    case MFX_FOURCC_ABGR16:
+        pExt = MSDK_STRING("abrg16");
+        break;
+    default:
+        return MFX_ERR_UNSUPPORTED;
+    }
+
+#if defined(_WIN32) || defined(_WIN64)
+    msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%08d.%s"), m_FileNameBase, filenameIndx, pExt);
+#else
+    msdk_sprintf(fname, MSDK_STRING("%s%08d.%s"), m_FileNameBase, filenameIndx, pExt);
+#endif
+
+    MSDK_FOPEN(m_fSrc, fname, MSDK_STRING("rb"));
+    MSDK_CHECK_POINTER(m_fSrc, MFX_ERR_MORE_DATA);
+
+    mfxI32 w, h, i, pitch;
+    mfxI32 nBytesRead;
+    mfxU16 *ptr = MSDK_MIN(MSDK_MIN(pData->Y16,pData->V16), pData->U16);
+
+    w = m_Width;
+    h = m_Height;
+
+    pitch = (mfxI32)(pData->Pitch >> 1);
+
+    for (i = 0; i < h; i++)
+    {
+#if defined(_WIN32) || defined(_WIN64)
+        nBytesRead = (mfxI32)fread_s(ptr + i * pitch, pData->Pitch, sizeof(mfxU16), 4*w, m_fSrc);
+#else
+        nBytesRead = (mfxI32)fread(ptr + i * pitch, sizeof(mfxU16), 4*w, m_fSrc);
+#endif
+        IOSTREAM_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+    }
+
+    pData->FrameOrder = m_FileNum;
+    m_FileNum++;
+
+    fclose(m_fSrc);
+
+    return MFX_ERR_NONE;
+}
+
 CRawVideoReader::CRawVideoReader()
 {
     m_fSrc = 0;
@@ -633,7 +770,7 @@ mfxStatus CRawVideoWriter::WriteFrame(mfxFrameData* pData, const msdk_char *file
 
     pitch = ( pData->PitchLow + ((mfxU32)pData->PitchHigh << 16))>>1;
 
-    ptr = pData->V16 + pInfo->CropX * 4 + pInfo->CropY * pitch;
+    ptr = MSDK_MIN(MSDK_MIN(pData->Y16,pData->V16), pData->U16) + pInfo->CropX * 4 + pInfo->CropY * pitch;
 #ifdef SHIFT_OUT_TO_LSB
     int shift = 16 - pInfo->BitDepthLuma;
     for (i = 0; i < h; i++)

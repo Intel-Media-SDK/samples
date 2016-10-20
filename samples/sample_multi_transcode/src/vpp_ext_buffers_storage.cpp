@@ -167,6 +167,18 @@ mfxStatus CVPPExtBuffersStorage::ParseCmdLine(msdk_char *argv[],mfxU32 argc,mfxU
         params->DeinterlacingMode=MFX_DEINTERLACING_ADVANCED;
         return MFX_ERR_NONE;
     }
+    else if (0 == msdk_strcmp(argv[index], MSDK_STRING("-deinterlace::ADI_SCD")))
+    {
+        params->bEnableDeinterlacing = true;
+        params->DeinterlacingMode=MFX_DEINTERLACING_ADVANCED_SCD;
+        return MFX_ERR_NONE;
+    }
+    else if (0 == msdk_strcmp(argv[index], MSDK_STRING("-deinterlace::BOB")))
+    {
+        params->bEnableDeinterlacing = true;
+        params->DeinterlacingMode=MFX_DEINTERLACING_BOB;
+        return MFX_ERR_NONE;
+    }
     else if (0 == msdk_strcmp(argv[index], MSDK_STRING("-deinterlace::ADI_NO_REF")))
     {
         params->bEnableDeinterlacing = true;
@@ -218,7 +230,7 @@ mfxStatus CVPPExtBuffersStorage::ParseCmdLine(msdk_char *argv[],mfxU32 argc,mfxU
         params->DecoderFourCC = MFX_FOURCC_NV12;
         return MFX_ERR_NONE;
     }
-    else if (0 == msdk_strcmp(argv[index], MSDK_STRING("-field_proccessing")) )
+    else if (0 == msdk_strcmp(argv[index], MSDK_STRING("-field_processing")) )
     {
         VALUE_CHECK(index+1 == argc, index, argv[index]);
         index++;
@@ -234,7 +246,7 @@ mfxStatus CVPPExtBuffersStorage::ParseCmdLine(msdk_char *argv[],mfxU32 argc,mfxU
             params->fieldProcessingMode = FC_FR2FR;
         else
         {
-            PrintError(NULL, MSDK_STRING("-field_proccessing \"%s\" is invalid"), argv[index]);
+            PrintError(NULL, MSDK_STRING("-field_processing \"%s\" is invalid"), argv[index]);
             return MFX_ERR_UNSUPPORTED;
         }
         return MFX_ERR_NONE;

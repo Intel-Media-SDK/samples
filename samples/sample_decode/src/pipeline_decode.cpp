@@ -19,6 +19,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "mfx_samples_config.h"
 #include "sample_defs.h"
+#include <algorithm>
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <tchar.h>
@@ -109,7 +110,13 @@ CDecodingPipeline::CDecodingPipeline()
     m_VppDeinterlacing.Header.BufferId = MFX_EXTBUFF_VPP_DEINTERLACING;
     m_VppDeinterlacing.Header.BufferSz = sizeof(m_VppDeinterlacing);
 
+    MSDK_ZERO_MEMORY(m_VppVideoSignalInfo);
+    m_VppVideoSignalInfo.Header.BufferId = MFX_EXTBUFF_VPP_VIDEO_SIGNAL_INFO;
+    m_VppVideoSignalInfo.Header.BufferSz = sizeof(m_VppVideoSignalInfo);
+
     m_hwdev = NULL;
+
+    m_bOutI420 = false;
 
 #ifdef LIBVA_SUPPORT
     m_export_mode = vaapiAllocatorParams::DONOT_EXPORT;
@@ -139,7 +146,6 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
     {
         switch (pParams->videoType)
         {
-        case MFX_CODEC_HEVC:
         case MFX_CODEC_AVC:
             m_FileReader.reset(new CH264FrameReader());
             m_bIsCompleteFrame = true;
@@ -191,6 +197,8 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
     m_nMaxFps = pParams->nMaxFPS;
     m_nFrames = pParams->nFrames ? pParams->nFrames : MFX_INFINITE;
 
+    m_bOutI420 = pParams->outI420;
+
     if (MFX_CODEC_CAPTURE != pParams->videoType)
     {
         sts = m_FileReader->Init(pParams->strSrcFile);
@@ -218,6 +226,11 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
     if (pParams->eDeinterlace)
     {
         m_diMode = pParams->eDeinterlace;
+    }
+
+    if (pParams->bUseFullColorRange)
+    {
+        m_bVppFullColorRange = pParams->bUseFullColorRange;
     }
 
     if (pParams->nThreadsNum) {
@@ -325,12 +338,12 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
         *    2.b) if codec is not in the list of mediasdk plugins, we assume, that it is supported inside mediasdk library
         */
         // Load user plug-in, should go after CreateAllocator function (when all callbacks were initialized)
-        if (pParams->pluginParams.type == MFX_PLUGINLOAD_TYPE_FILE && strlen(pParams->pluginParams.strPluginPath))
+        if (pParams->pluginParams.type == MFX_PLUGINLOAD_TYPE_FILE && msdk_strnlen(pParams->pluginParams.strPluginPath,sizeof(pParams->pluginParams.strPluginPath)))
         {
             m_pUserModule.reset(new MFXVideoUSER(m_mfxSession));
             if (pParams->videoType == CODEC_VP8 || pParams->videoType == MFX_CODEC_HEVC)
             {
-                m_pPlugin.reset(LoadPlugin(MFX_PLUGINTYPE_VIDEO_DECODE, m_mfxSession, pParams->pluginParams.pluginGuid, 1, pParams->pluginParams.strPluginPath, (mfxU32)strlen(pParams->pluginParams.strPluginPath)));
+                m_pPlugin.reset(LoadPlugin(MFX_PLUGINTYPE_VIDEO_DECODE, m_mfxSession, pParams->pluginParams.pluginGuid, 1, pParams->pluginParams.strPluginPath, (mfxU32)msdk_strnlen(pParams->pluginParams.strPluginPath,sizeof(pParams->pluginParams.strPluginPath))));
             }
             if (m_pPlugin.get() == NULL) sts = MFX_ERR_UNSUPPORTED;
         }
@@ -731,6 +744,10 @@ mfxStatus CDecodingPipeline::InitMfxParams(sInputParams *pParams)
     {
         m_mfxVideoParams.mfx.FrameInfo.FourCC = MFX_FOURCC_RGB4;
         m_mfxVideoParams.mfx.FrameInfo.ChromaFormat = MFX_CHROMAFORMAT_YUV444;
+        if (pParams->chromaType == MFX_JPEG_COLORFORMAT_RGB)
+        {
+            m_mfxVideoParams.mfx.JPEGColorFormat = pParams->chromaType;
+        }
     }
 
     // If MVC mode we need to detect number of views in stream
@@ -829,6 +846,17 @@ mfxStatus CDecodingPipeline::InitVppParams()
 
     m_mfxVppVideoParams.ExtParam = &m_VppExtParams[0];
     m_mfxVppVideoParams.NumExtParam = (mfxU16)m_VppExtParams.size();
+
+    m_VppSurfaceExtParams.clear();
+    if (m_bVppFullColorRange)
+    {
+        //Let MSDK figure out the transfer matrix to use
+        m_VppVideoSignalInfo.TransferMatrix = MFX_TRANSFERMATRIX_UNKNOWN;
+        m_VppVideoSignalInfo.NominalRange = MFX_NOMINALRANGE_0_255;
+
+        m_VppSurfaceExtParams.push_back((mfxExtBuffer*)&m_VppVideoSignalInfo);
+    }
+
     return MFX_ERR_NONE;
 }
 
@@ -878,7 +906,7 @@ mfxStatus CDecodingPipeline::CreateHWDevice()
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
 #if defined(LIBVA_WAYLAND_SUPPORT)
-    if (m_eWorkMode == MODE_RENDERING) {
+    if (m_eWorkMode == MODE_RENDERING && m_libvaBackend == MFX_LIBVA_WAYLAND) {
         mfxHDL hdl = NULL;
         mfxHandleType hdlw_t = (mfxHandleType)HANDLE_WAYLAND_DRIVER;
         Wayland *wld;
@@ -1031,6 +1059,11 @@ mfxStatus CDecodingPipeline::AllocFrames()
         MSDK_MEMCPY_VAR(m_pSurfaces[i].frame.Info, &(Request.Info), sizeof(mfxFrameInfo));
         if (m_bExternalAlloc) {
             m_pSurfaces[i].frame.Data.MemId = m_mfxResponse.mids[i];
+            if (m_bVppFullColorRange)
+            {
+                m_pSurfaces[i].frame.Data.ExtParam = &m_VppSurfaceExtParams[0];
+                m_pSurfaces[i].frame.Data.NumExtParam = (mfxU16)m_VppSurfaceExtParams.size();
+            }
         }
         else {
             sts = m_pGeneralAllocator->Lock(m_pGeneralAllocator->pthis, m_mfxResponse.mids[i], &(m_pSurfaces[i].frame.Data));
@@ -1043,6 +1076,11 @@ mfxStatus CDecodingPipeline::AllocFrames()
         MSDK_MEMCPY_VAR(m_pVppSurfaces[i].frame.Info, &(VppRequest[1].Info), sizeof(mfxFrameInfo));
         if (m_bExternalAlloc) {
             m_pVppSurfaces[i].frame.Data.MemId = m_mfxVppResponse.mids[i];
+            if (m_bVppFullColorRange)
+            {
+                m_pVppSurfaces[i].frame.Data.ExtParam = &m_VppSurfaceExtParams[0];
+                m_pVppSurfaces[i].frame.Data.NumExtParam = (mfxU16)m_VppSurfaceExtParams.size();
+            }
         }
         else {
             sts = m_pGeneralAllocator->Lock(m_pGeneralAllocator->pthis, m_mfxVppResponse.mids[i], &(m_pVppSurfaces[i].frame.Data));
@@ -1127,7 +1165,7 @@ mfxStatus CDecodingPipeline::CreateAllocator()
                 CVAAPIDeviceDRM* drmdev = dynamic_cast<CVAAPIDeviceDRM*>(m_hwdev);
                 p_vaapiAllocParams->m_export_mode = vaapiAllocatorParams::CUSTOM_FLINK;
                 p_vaapiAllocParams->m_exporter = dynamic_cast<vaapiAllocatorParams::Exporter*>(drmdev->getRenderer());
-            } else if (m_libvaBackend == MFX_LIBVA_WAYLAND) {
+            } else if (m_libvaBackend == MFX_LIBVA_WAYLAND || m_libvaBackend == MFX_LIBVA_X11) {
                 p_vaapiAllocParams->m_export_mode = vaapiAllocatorParams::PRIME;
             }
         }
@@ -1351,7 +1389,8 @@ mfxStatus CDecodingPipeline::DeliverOutput(mfxFrameSurface1* frame)
         if (m_eWorkMode == MODE_FILE_DUMP) {
             res = m_pGeneralAllocator->Lock(m_pGeneralAllocator->pthis, frame->Data.MemId, &(frame->Data));
             if (MFX_ERR_NONE == res) {
-                res = m_FileWriter.WriteNextFrame(frame);
+                res = m_bOutI420 ? m_FileWriter.WriteNextFrameI420(frame)
+                    : m_FileWriter.WriteNextFrame(frame);
                 sts = m_pGeneralAllocator->Unlock(m_pGeneralAllocator->pthis, frame->Data.MemId, &(frame->Data));
             }
             if ((MFX_ERR_NONE == res) && (MFX_ERR_NONE != sts)) {
@@ -1366,7 +1405,8 @@ mfxStatus CDecodingPipeline::DeliverOutput(mfxFrameSurface1* frame)
         }
     }
     else {
-        res = m_FileWriter.WriteNextFrame(frame);
+        res = m_bOutI420 ? m_FileWriter.WriteNextFrameI420(frame)
+            : m_FileWriter.WriteNextFrame(frame);
     }
 
     return res;
@@ -1620,7 +1660,7 @@ mfxStatus CDecodingPipeline::RunDecoding()
                 if (pBitstream && MFX_ERR_MORE_DATA == sts && pBitstream->MaxLength == pBitstream->DataLength)
                 {
                     mfxStatus status = ExtendMfxBitstream(pBitstream, pBitstream->MaxLength * 2);
-                    MSDK_CHECK_RESULT(status, MFX_ERR_NONE, status);
+                    MSDK_CHECK_RESULT_SAFE(status, MFX_ERR_NONE, status, MSDK_SAFE_DELETE(pDeliverThread));
                 }
 
                 if (MFX_WRN_DEVICE_BUSY == sts) {
@@ -1817,15 +1857,20 @@ void CDecodingPipeline::PrintInfo()
     mfxF64 dFrameRate = CalculateFrameRate(Info.FrameRateExtN, Info.FrameRateExtD);
     msdk_printf(MSDK_STRING("Frame rate\t%.2f\n"), dFrameRate);
 
-    const msdk_char* sMemType = m_memType == D3D9_MEMORY  ? MSDK_STRING("d3d")
-                             : (m_memType == D3D11_MEMORY ? MSDK_STRING("d3d11")
-                                                          : MSDK_STRING("system"));
+    const msdk_char* sMemType =
+#if defined(_WIN32) || defined(_WIN64)
+        m_memType == D3D9_MEMORY  ? MSDK_STRING("d3d")
+#else
+        m_memType == D3D9_MEMORY  ? MSDK_STRING("vaapi")
+#endif
+        : (m_memType == D3D11_MEMORY ? MSDK_STRING("d3d11")
+        : MSDK_STRING("system"));
     msdk_printf(MSDK_STRING("Memory type\t\t%s\n"), sMemType);
 
 
     const msdk_char* sImpl = (MFX_IMPL_VIA_D3D11 == MFX_IMPL_VIA_MASK(m_impl)) ? MSDK_STRING("hw_d3d11")
-                           : (MFX_IMPL_HARDWARE & m_impl)  ? MSDK_STRING("hw")
-                                                         : MSDK_STRING("sw");
+                           : (MFX_IMPL_SOFTWARE == MFX_IMPL_BASETYPE(m_impl))  ? MSDK_STRING("sw")
+                                                         : MSDK_STRING("hw");
     msdk_printf(MSDK_STRING("MediaSDK impl\t\t%s\n"), sImpl);
 
     mfxVersion ver;

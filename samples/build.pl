@@ -44,10 +44,15 @@ my $clean = "";
 my $msdk  = "";
 my $toolchain = "";
 my $mfx_home = "";
+my $vtune_home = "";
+my $enable_itt = "no";
 my $enable_sw  = "yes";
 my $enable_drm = "yes";
 my $enable_x11 = "yes";
+my $enable_x11_dri3="no";
 my $enable_wayland = "no";
+my $enable_v4l2 = "no";
+my $enable_mondello = "no";
 my $enable_ffmpeg = "yes";
 my $enable_opencl = "yes";
 
@@ -98,16 +103,22 @@ sub usage {
   print "\n";
   print "Environment variables:\n";
   print "\tMFX_HOME=/path/to/mediasdk/package # required, can be overwritten by --mfx-home option\n";
+  print "\tVTUNE_HOME=/path/to/vtune/package  # optional, can be overwritten by --vtune-home option\n";
   print "\tMFX_VERSION=\"0.0.000.0000\"       # optional\n";
   print "\n";
   print "Optional flags:\n";
   print "\t--clean - clean build directory before projects generation / build\n";
   print "\t--build - try to build projects after generation (requires cmake>=2.8.0)\n";
   print "\t--mfx-home=/path/to/mediasdk/package - Media SDK package location [default: <none>]\n";
+  print "\t--vtune-home=/path/to/vtune/package - VTune package location [default: <none>]\n";
+  print "\t--enable-itt=yes|no     - enable ITT instrumentation support [default: $enable_itt]\n";
   print "\t--enable-sw=yes|no      - enable SW backend support [default: $enable_sw]\n";
   print "\t--enable-drm=yes|no     - enable DRM backend support [default: $enable_drm]\n";
   print "\t--enable-x11=yes|no     - enable X11 backend support [default: $enable_x11]\n";
+  print "\t--enable-x11-dri3=yes|no - enable X11 DRI3 backend support [default: $enable_x11_dri3]\n";
   print "\t--enable-wayland=yes|no - enable Wayland backend support [default: $enable_wayland]\n";
+  print "\t--enable-v4l2=yes|no - enable v4l2 support [default: $enable_v4l2]\n";
+  print "\t--enable-mondello=yes|no - enable MOndello/v4l2 support [default: $enable_mondello]\n";
   print "\t--enable-ffmpeg=yes|no  - build ffmpeg dependent targets [default: $enable_ffmpeg]\n";
   print "\t--enable-opencl=yes|no  - build OpenCL dependent targets [default: $enable_opencl]\n";
   print "\n";
@@ -129,10 +140,15 @@ GetOptions (
   '--verbose' => \$verb,
   '--cross=s' => \$toolchain,
   '--mfx-home=s' => \$mfx_home,
+  '--vtune-home=s' => \$vtune_home,
   '--enable-sw=s' => \$enable_sw,
+  '--enable-itt=s' => \$enable_itt,
   '--enable-drm=s' => \$enable_drm,
   '--enable-x11=s' => \$enable_x11,
+  '--enable-x11-dri3=s' => \$enable_x11_dri3,
   '--enable-wayland=s' => \$enable_wayland,
+  '--enable-v4l2=s' => \$enable_v4l2,
+  '--enable-mondello=s' => \$enable_mondello,
   '--enable-ffmpeg=s' => \$enable_ffmpeg,
   '--enable-opencl=s' => \$enable_opencl
 );
@@ -151,7 +167,10 @@ if(in_array(\@list_arch, $build{'arch'}) and
    in_array(\@list_yesno, $enable_sw) and
    in_array(\@list_yesno, $enable_drm) and
    in_array(\@list_yesno, $enable_x11) and
+   in_array(\@list_yesno, $enable_x11_dri3) and
    in_array(\@list_yesno, $enable_wayland) and
+   in_array(\@list_yesno, $enable_v4l2) and
+   in_array(\@list_yesno, $enable_mondello) and
    in_array(\@list_yesno, $enable_ffmpeg) and
    in_array(\@list_yesno, $enable_opencl)) {
    $configuration_valid = 1;
@@ -177,10 +196,14 @@ $cmake_cmd_gen.= "-DCMAKE_BUILD_TYPE:STRING=$build{'config'} " if($build{'genera
 $cmake_cmd_gen.= "-D__GENERATOR:STRING=$build{'generator'} -D__ARCH:STRING=$build{'arch'} -D__CONFIG:STRING=$build{'config'} ";
 $cmake_cmd_gen.= "-DCMAKE_TOOLCHAIN_FILE=$toolchain " if $toolchain ne "";
 
+$cmake_cmd_gen.= "-DENABLE_ITT:STRING=" . (($enable_itt eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_SW:STRING=" . (($enable_sw eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_DRM:STRING=" . (($enable_drm eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_X11:STRING=" . (($enable_x11 eq "yes") ? "ON": "OFF") . " ";
+$cmake_cmd_gen.= "-DENABLE_X11_DRI3:STRING=" . (($enable_x11_dri3 eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_WAYLAND:STRING=" . (($enable_wayland eq "yes") ? "ON": "OFF") . " ";
+$cmake_cmd_gen.= "-DENABLE_V4L2:STRING=" . (($enable_v4l2 eq "yes") ? "ON": "OFF") . " ";
+$cmake_cmd_gen.= "-DENABLE_MONDELLO:STRING=" . (($enable_mondello eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_FFMPEG:STRING=" . (($enable_ffmpeg eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_OPENCL:STRING=" . (($enable_opencl eq "yes") ? "ON": "OFF") . " ";
 
@@ -188,6 +211,11 @@ my $mfx_home_abs = "";
 
 $mfx_home_abs = File::Spec->rel2abs($mfx_home) if $mfx_home ne "";
 $cmake_cmd_gen.= "-DCMAKE_MFX_HOME:STRING=$mfx_home_abs " if $mfx_home_abs ne "";
+
+my $vtune_home_abs = "";
+
+$vtune_home_abs = File::Spec->rel2abs($vtune_home) if $vtune_home ne "";
+$cmake_cmd_gen.= "-DCMAKE_VTUNE_HOME:STRING=$vtune_home_abs " if $vtune_home_abs ne "";
 
 $cmake_cmd_gen.= nativepath($sample_path);
 

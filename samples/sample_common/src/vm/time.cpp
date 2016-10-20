@@ -39,4 +39,8 @@ msdk_tick msdk_time_get_frequency(void)
     return t1.QuadPart;
 }
 
+mfxU64 rdtsc(){
+    return __rdtsc();
+}
+
 #endif // #if defined(_WIN32) || defined(_WIN64)

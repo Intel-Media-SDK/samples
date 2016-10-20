@@ -117,6 +117,12 @@
     <ClInclude Include="include\decode_render.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\time_statistics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\plugin_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\base_allocator.cpp">

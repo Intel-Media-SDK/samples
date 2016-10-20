@@ -37,7 +37,7 @@ set nMonitor=0
 rem Set frame rate for rendering
 set FrameRate=30
 rem Set timeout in seconds
-set Timeout=30
+set Timeout=15
 
 
 if "%1"=="" goto :help

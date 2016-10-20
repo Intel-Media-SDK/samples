@@ -23,6 +23,9 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "vaapi_utils_x11.h"
 
 #include <dlfcn.h>
+#if defined(X11_DRI3_SUPPORT)
+#include <fcntl.h>
+#endif
 
 #define VAAPI_X_DEFAULT_DISPLAY ":0.0"
 
@@ -38,6 +41,7 @@ X11LibVA::X11LibVA(void)
     int major_version = 0, minor_version = 0;
     char* currentDisplay = getenv("DISPLAY");
 
+#if !defined(X11_DRI3_SUPPORT)
     try
     {
         if (currentDisplay)
@@ -62,20 +66,8 @@ X11LibVA::X11LibVA(void)
             if (!setenv("LIBVA_DRIVER_NAME", PROCESSING_DRIVER_NAME, 1)) {
             va_res = m_libva.vaInitialize(m_va_dpy, &major_version, &minor_version);
             sts = va_to_mfx_status(va_res);
-            if (MFX_ERR_NONE != sts)
-            {
+            if (MFX_ERR_NONE != sts) {
                 m_x11lib.XCloseDisplay(m_display);
-                }else {
-                    void *so_handle = dlopen(IHD_DRV_VIDEO_DRIVER, RTLD_GLOBAL | RTLD_NOW);
-                    if (so_handle) {
-                        m_fnVaGetSurfaceHandle = (vaExtGetSurfaceHandle)dlsym(so_handle, VPG_EXT_GET_SURFACE_HANDLE);
-                        if (!m_fnVaGetSurfaceHandle) {
-                            dlclose(so_handle);
-                            sts = MFX_ERR_NOT_INITIALIZED;
-                        } else
-                            dlclose(so_handle);
-                    } else
-                        sts = MFX_ERR_NOT_INITIALIZED;
                 }
                 unsetenv("LIBVA_DRIVER_NAME");
             } else {
@@ -108,6 +100,36 @@ X11LibVA::X11LibVA(void)
             }
         }
     }
+#else
+    try
+    {
+        if (currentDisplay)
+            m_display = m_x11lib.XOpenDisplay(currentDisplay);
+        else
+            m_display = m_x11lib.XOpenDisplay(VAAPI_X_DEFAULT_DISPLAY);
+
+        if (NULL == m_display) sts = MFX_ERR_NOT_INITIALIZED;
+        if (MFX_ERR_NONE == sts)
+        {
+            m_va_dpy = m_vax11lib.vaGetDisplay(m_display);
+
+            if (!m_va_dpy)
+            {
+                m_x11lib.XCloseDisplay(m_display);
+                sts = MFX_ERR_NULL_PTR;
+            }
+        }
+        if (MFX_ERR_NONE == sts)
+        {
+            va_res = m_libva.vaInitialize(m_va_dpy, &major_version, &minor_version);
+            sts = va_to_mfx_status(va_res);
+            if (MFX_ERR_NONE != sts)
+            {
+                m_x11lib.XCloseDisplay(m_display);
+            }
+        }
+    }
+#endif // X11_DRI3_SUPPORT
     catch(std::exception& )
     {
         sts = MFX_ERR_NOT_INITIALIZED;
@@ -118,10 +140,12 @@ X11LibVA::X11LibVA(void)
 
 X11LibVA::~X11LibVA(void)
 {
+#if !defined(X11_DRI3_SUPPORT)
     if (m_va_dpy_render && (m_va_dpy_render != m_va_dpy))
     {
         m_libva.vaTerminate(m_va_dpy_render);
     }
+#endif
     if (m_va_dpy)
     {
         m_libva.vaTerminate(m_va_dpy);

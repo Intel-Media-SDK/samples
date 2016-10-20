@@ -75,7 +75,10 @@ mfxStatus CUserPipeline::AllocFrames()
     RotateRequest.NumFrameSuggested = RotateRequest.NumFrameMin = nRotateSurfNum;
 
     mfxU16 mem_type = MFX_MEMTYPE_EXTERNAL_FRAME;
-    mem_type |= (D3D9_MEMORY == m_memType) ? (mfxU16)MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET : (mfxU16)MFX_MEMTYPE_SYSTEM_MEMORY;
+    mem_type |= (SYSTEM_MEMORY == m_memType) ?
+        (mfxU16)MFX_MEMTYPE_SYSTEM_MEMORY
+        :(mfxU16)MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET;
+
     EncRequest.Type = RotateRequest.Type = mem_type;
 
     EncRequest.Type |= MFX_MEMTYPE_FROM_ENCODE;
@@ -102,7 +105,7 @@ mfxStatus CUserPipeline::AllocFrames()
     {
         MSDK_ZERO_MEMORY(m_pEncSurfaces[i]);
         MSDK_MEMCPY_VAR(m_pEncSurfaces[i].Info, &(m_mfxEncParams.mfx.FrameInfo), sizeof(mfxFrameInfo));
-        if (D3D9_MEMORY == m_memType)
+        if (SYSTEM_MEMORY != m_memType)
         {
             // external allocator used - provide just MemIds
             m_pEncSurfaces[i].Data.MemId = m_EncResponse.mids[i];
@@ -118,7 +121,7 @@ mfxStatus CUserPipeline::AllocFrames()
     {
         MSDK_ZERO_MEMORY(m_pPluginSurfaces[i]);
         MSDK_MEMCPY_VAR(m_pPluginSurfaces[i].Info, &(m_pluginVideoParams.vpp.In), sizeof(mfxFrameInfo));
-        if (D3D9_MEMORY == m_memType)
+        if (SYSTEM_MEMORY != m_memType)
         {
             // external allocator used - provide just MemIds
             m_pPluginSurfaces[i].Data.MemId = m_PluginResponse.mids[i];
@@ -185,6 +188,11 @@ mfxStatus CUserPipeline::Init(sInputParams *pParams)
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
     mfxIMPL impl = pParams->bUseHWLib ? MFX_IMPL_HARDWARE : MFX_IMPL_SOFTWARE;
+
+    // if d3d11 surfaces are used ask the library to run acceleration through D3D11
+    // feature may be unsupported due to OS or MSDK API version
+    if (D3D11_MEMORY == pParams->memType)
+        impl |= MFX_IMPL_VIA_D3D11;
 
     mfxVersion min_version;
     mfxVersion version;     // real API version with which library is initialized
@@ -297,6 +305,7 @@ mfxStatus CUserPipeline::ResetMFXComponents(sInputParams* pParams)
 
 mfxStatus CUserPipeline::Run()
 {
+    m_statOverall.StartTimeMeasurement();
     MSDK_CHECK_POINTER(m_pmfxENC, MFX_ERR_NOT_INITIALIZED);
 
     mfxStatus sts = MFX_ERR_NONE;
@@ -320,16 +329,18 @@ mfxStatus CUserPipeline::Run()
         MSDK_CHECK_ERROR(nRotateSurfIdx, MSDK_INVALID_SURF_IDX, MFX_ERR_MEMORY_ALLOC);
 
         mfxFrameSurface1 *rot_surf = &m_pPluginSurfaces[nRotateSurfIdx];
-        if (D3D9_MEMORY == m_memType)
+        if (SYSTEM_MEMORY != m_memType)
         {
             sts = m_pMFXAllocator->Lock(m_pMFXAllocator->pthis, rot_surf->Data.MemId, &(rot_surf->Data));
             MSDK_BREAK_ON_ERROR(sts);
         }
 
+        m_statFile.StartTimeMeasurement();
         sts = m_FileReader.LoadNextFrame(&m_pPluginSurfaces[nRotateSurfIdx]);
+        m_statFile.StopTimeMeasurement();
         MSDK_BREAK_ON_ERROR(sts);
 
-        if (D3D9_MEMORY == m_memType)
+        if (SYSTEM_MEMORY != m_memType)
         {
             sts = m_pMFXAllocator->Unlock(m_pMFXAllocator->pthis, rot_surf->Data.MemId, &(rot_surf->Data));
             MSDK_BREAK_ON_ERROR(sts);
@@ -448,7 +459,7 @@ mfxStatus CUserPipeline::Run()
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_FOUND);
     // report any errors that occurred in asynchronous part
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-
+    m_statOverall.StopTimeMeasurement();
     return sts;
 }
 

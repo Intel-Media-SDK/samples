@@ -121,6 +121,7 @@ namespace TranscodingSample
         msdk_char                                    *m_parName;
         mfxU32                                       statisticsWindowSize;
         mfxU32                                       m_nTimeout;
+        bool                                         shouldUseGreedyFormula;
     private:
         DISALLOW_COPY_AND_ASSIGN(CmdProcessor);
 

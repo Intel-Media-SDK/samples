@@ -79,10 +79,8 @@ VA_Proxy::VA_Proxy()
     , SIMPLE_LOADER_FUNCTION(vaDeriveImage)
     , SIMPLE_LOADER_FUNCTION(vaDestroyImage)
     , SIMPLE_LOADER_FUNCTION(vaGetLibFunc)
-#ifndef DISABLE_VAAPI_BUFFER_EXPORT
     , SIMPLE_LOADER_FUNCTION(vaAcquireBufferHandle)
     , SIMPLE_LOADER_FUNCTION(vaReleaseBufferHandle)
-#endif
 {
 }
 
@@ -124,6 +122,9 @@ DrmIntel_Proxy::DrmIntel_Proxy()
     , SIMPLE_LOADER_FUNCTION(drm_intel_bo_gem_create_from_prime)
     , SIMPLE_LOADER_FUNCTION(drm_intel_bo_unreference)
     , SIMPLE_LOADER_FUNCTION(drm_intel_bufmgr_gem_init)
+#if defined(X11_DRI3_SUPPORT)
+    , SIMPLE_LOADER_FUNCTION(drm_intel_bo_gem_export_to_prime)
+#endif
 {
 }
 
@@ -138,6 +139,46 @@ VA_DRMProxy::VA_DRMProxy()
 
 VA_DRMProxy::~VA_DRMProxy()
 {}
+
+#if defined(X11_DRI3_SUPPORT)
+XCB_Dri3_Proxy::XCB_Dri3_Proxy()
+    : lib("libxcb-dri3.so.0")
+    , SIMPLE_LOADER_FUNCTION(xcb_dri3_pixmap_from_buffer)
+{
+}
+
+XCB_Dri3_Proxy::~XCB_Dri3_Proxy()
+{}
+
+Xcb_Proxy::Xcb_Proxy()
+    : lib("libxcb.so.1")
+    , SIMPLE_LOADER_FUNCTION(xcb_generate_id)
+    , SIMPLE_LOADER_FUNCTION(xcb_free_pixmap)
+    , SIMPLE_LOADER_FUNCTION(xcb_flush)
+{
+}
+
+Xcb_Proxy::~Xcb_Proxy()
+{}
+
+X11_Xcb_Proxy::X11_Xcb_Proxy()
+    : lib("libX11-xcb.so.1")
+    , SIMPLE_LOADER_FUNCTION(XGetXCBConnection)
+{
+}
+
+X11_Xcb_Proxy::~X11_Xcb_Proxy()
+{}
+
+Xcbpresent_Proxy::Xcbpresent_Proxy()
+    : lib("libxcb-present.so.0")
+    , SIMPLE_LOADER_FUNCTION(xcb_present_pixmap)
+{
+}
+
+Xcbpresent_Proxy::~Xcbpresent_Proxy()
+{}
+#endif // X11_DRI3_SUPPORT
 #endif
 
 #if defined(LIBVA_WAYLAND_SUPPORT)
@@ -173,7 +214,9 @@ XLib_Proxy::XLib_Proxy()
     , SIMPLE_LOADER_FUNCTION(XSync)
     , SIMPLE_LOADER_FUNCTION(XDestroyWindow)
     , SIMPLE_LOADER_FUNCTION(XResizeWindow)
-
+#if defined(X11_DRI3_SUPPORT)
+    , SIMPLE_LOADER_FUNCTION(XGetGeometry)
+#endif // X11_DRI3_SUPPORT
 {}
 
 XLib_Proxy::~XLib_Proxy()
@@ -181,6 +224,28 @@ XLib_Proxy::~XLib_Proxy()
 
 
 #endif
+
+#if defined (ENABLE_MONDELLO_SUPPORT)
+LibCamhalProxy::LibCamhalProxy()
+    :lib("libcamhal.so")
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera15camera_hal_initEv)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera17camera_hal_deinitEv)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera18camera_device_openEi)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera19camera_device_closeEi)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera19camera_device_startEi)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera18camera_device_stopEi)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera21get_number_of_camerasEv)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera15get_camera_infoEiRNS_13camera_info_tE)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera28camera_device_config_streamsEiPNS_15stream_config_tE)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera18camera_stream_qbufEiiPNS_15camera_buffer_tE)
+    , SIMPLE_LOADER_FUNCTION(_ZN7icamera19camera_stream_dqbufEiiPPNS_15camera_buffer_tE)
+{
+}
+
+LibCamhalProxy::~LibCamhalProxy()
+{}
+#endif
+
 
 #undef SIMPLE_LOADER_FUNCTION
 
@@ -315,10 +380,12 @@ VAStatus CLibVA::AcquireVASurface(
     VAStatus va_res;
     VASurfaceAttrib attribs[2];
     VASurfaceAttribExternalBuffers extsrf;
+    VABufferInfo bufferInfo;
     uint32_t memtype = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME;
 
     MSDK_ZERO_MEMORY(attribs);
     MSDK_ZERO_MEMORY(extsrf);
+    MSDK_ZERO_MEMORY(bufferInfo);
     extsrf.num_buffers = 1;
     extsrf.buffers = &handle;
 
@@ -341,7 +408,7 @@ VAStatus CLibVA::AcquireVASurface(
         return va_res;
     }
 
-    va_res = m_fnVaGetSurfaceHandle(dpy1, &srf1, &ctx->fd);
+    va_res = m_libva.vaAcquireBufferHandle(dpy1, ctx->image.buf, &bufferInfo);
     if (VA_STATUS_SUCCESS != va_res) {
         m_libva.vaDestroyImage(dpy1, ctx->image.image_id);
         free(ctx);
@@ -358,7 +425,7 @@ VAStatus CLibVA::AcquireVASurface(
     }
     extsrf.data_size = ctx->image.data_size;
     extsrf.flags = memtype;
-    extsrf.buffers[0] = ctx->fd;
+    extsrf.buffers[0] = bufferInfo.handle;
 
     va_res = m_libva.vaCreateSurfaces(dpy2,
         VA_RT_FORMAT_YUV420,
@@ -387,6 +454,7 @@ void CLibVA::ReleaseVASurface(
         if (ctx) {
             m_libva.vaDestroySurfaces(dpy2, &srf2, 1);
             close(ctx->fd);
+            m_libva.vaReleaseBufferHandle(dpy1, ctx->image.buf);
             m_libva.vaDestroyImage(dpy1, ctx->image.image_id);
             free(ctx);
         }

@@ -102,7 +102,7 @@ mfxStatus vaapiFrameAllocator::Init(mfxAllocatorParams *pParams)
     m_dpy = p_vaapiParams->m_dpy;
     m_export_mode = p_vaapiParams->m_export_mode;
     m_exporter = p_vaapiParams->m_exporter;
-#if defined(LIBVA_WAYLAND_SUPPORT)
+#if defined(LIBVA_WAYLAND_SUPPORT) || defined (ENABLE_V4L2_SUPPORT)|| defined (X11_DRI3_SUPPORT)
     // TODO this should be done on application level via allocator parameters!!
     m_export_mode = vaapiAllocatorParams::PRIME;
 #endif
@@ -152,6 +152,7 @@ mfxStatus vaapiFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
                        (VA_FOURCC_ARGB != va_fourcc) &&
                        (VA_FOURCC_P208 != va_fourcc)))
     {
+        msdk_printf(MSDK_STRING("VAAPI Allocator: invalid fourcc is provided (%#X), exitting\n"),va_fourcc);
         return MFX_ERR_MEMORY_ALLOC;
     }
     if (!surfaces_num)
@@ -194,7 +195,7 @@ mfxStatus vaapiFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
             {
                 format = VA_RT_FORMAT_YUV420;
             }
-            else if (va_fourcc == VA_FOURCC_UYVY)
+            else if ((va_fourcc == VA_FOURCC_UYVY) || (va_fourcc == VA_FOURCC_YUY2))
             {
                 format = VA_RT_FORMAT_YUV422;
             }
@@ -246,6 +247,7 @@ mfxStatus vaapiFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
             }
         }
     }
+
     if ((MFX_ERR_NONE == mfx_res) &&
         (request->Type & MFX_MEMTYPE_EXPORT_FRAME))
     {
@@ -255,7 +257,6 @@ mfxStatus vaapiFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
         for (i=0; i < surfaces_num; ++i)
         {
             if (m_export_mode & vaapiAllocatorParams::NATIVE_EXPORT_MASK) {
-#ifndef DISABLE_VAAPI_BUFFER_EXPORT
                 vaapi_mids[i].m_buffer_info.mem_type = (m_export_mode & vaapiAllocatorParams::PRIME)?
                   VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME: VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM;
                 va_res = m_libva->vaDeriveImage(m_dpy, surfaces[i], &(vaapi_mids[i].m_image));
@@ -264,10 +265,10 @@ mfxStatus vaapiFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
                 if (MFX_ERR_NONE != mfx_res) break;
 
                 va_res = m_libva->vaAcquireBufferHandle(m_dpy, vaapi_mids[i].m_image.buf, &(vaapi_mids[i].m_buffer_info));
-#else
-                va_res = VA_STATUS_ERROR_OPERATION_FAILED;
-#endif
+
                 mfx_res = va_to_mfx_status(va_res);
+
+                m_libva->vaDestroyImage(m_dpy, vaapi_mids[i].m_image.buf);
             }
             if (m_exporter) {
                 vaapi_mids[i].m_custom = m_exporter->acquire(&vaapi_mids[i]);
@@ -343,9 +344,7 @@ mfxStatus vaapiFrameAllocator::ReleaseResponse(mfxFrameAllocResponse *response)
                     m_exporter->release(&vaapi_mids[i], vaapi_mids[i].m_custom);
                 }
                 if (m_export_mode & vaapiAllocatorParams::NATIVE_EXPORT_MASK) {
-#ifndef DISABLE_VAAPI_BUFFER_EXPORT
                     m_libva->vaReleaseBufferHandle(m_dpy, vaapi_mids[i].m_image.buf);
-#endif
                     m_libva->vaDestroyImage(m_dpy, vaapi_mids[i].m_image.image_id);
                 }
             }

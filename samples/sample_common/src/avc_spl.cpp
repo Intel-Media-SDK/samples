@@ -665,6 +665,11 @@ mfxStatus AVC_Spl::GetFrame(mfxBitstream * bs_in, FrameSplitterInfo ** frame)
         {
             AVCSlice * pSlice = m_pLastSlice;
             mfxStatus sts = AddSlice(pSlice);
+            if(!m_lastNalUnit)
+            {
+                msdk_printf(MSDK_STRING("ERROR: m_lastNalUnit=NULL\n"));
+                return MFX_ERR_NULL_PTR;
+            }
             AddSliceNalUnit(m_lastNalUnit, pSlice);
             m_lastNalUnit = 0;
             if (sts == MFX_ERR_NONE)

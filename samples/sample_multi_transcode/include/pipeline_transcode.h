@@ -69,6 +69,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #endif
 
 #define MFX_FOURCC_DUMP MFX_MAKEFOURCC('D','U','M','P')
+#define MAX_PREF_LEN    256
 
 namespace TranscodingSample
 {
@@ -80,7 +81,8 @@ namespace TranscodingSample
         Sink,              // means that pipeline makes decode only and put data to shared buffer
         Source,            // means that pipeline makes vpp + encode and get data from shared buffer
         VppComp,           // means that pipeline makes vpp composition + encode and get data from shared buffer
-        VppCompOnly        // means that pipeline makes vpp composition and get data from shared buffer
+        VppCompOnly,       // means that pipeline makes vpp composition and get data from shared buffer
+        VppCompOnlyEncode  // means that pipeline makes vpp composition + encode and get data from shared buffer
     };
 
     enum EFieldCopyMode
@@ -149,6 +151,7 @@ namespace TranscodingSample
         mfxU16 BufferSizeInKB;
         mfxU16 GopPicSize;
         mfxU16 GopRefDist;
+        mfxU16 NumRefFrame;
 
         // MVC Specific Options
         bool   bIsMVC; // true if Multi-View-Codec is in use
@@ -194,6 +197,15 @@ namespace TranscodingSample
         mfxU16 nRenderColorForamt; /*0 NV12 - default, 1 is ARGB*/
 
         mfxI32  monitorType;
+        bool shouldUseGreedyFormula;
+        bool enableQSVFF;
+
+#if defined(LIBVA_WAYLAND_SUPPORT)
+        mfxU16 nRenderWinX;
+        mfxU16 nRenderWinY;
+        bool  bPerfMode;
+#endif
+
 #if defined(LIBVA_SUPPORT)
         mfxI32  libvaBackend;
 #endif // defined(MFX_LIBVA_SUPPORT)
@@ -234,20 +246,49 @@ namespace TranscodingSample
         PreEncAuxBuffer* pCtrl;
     };
 
+    class CIOStat : public CTimeStatistics
+    {
+        public:
+            CIOStat() : CTimeStatistics()
+            {
+                MSDK_ZERO_MEMORY(bufDir);
+            }
+
+            CIOStat(const msdk_char *dir) : CTimeStatistics()
+            {
+                msdk_strcopy(bufDir, dir);
+            }
+
+            inline void SetDirection(const msdk_char *dir)
+            {
+                if (dir)
+                    msdk_strcopy(bufDir, dir);
+            }
+
+            inline void PrintStatistics(mfxU32 numPipelineid)
+            {
+                msdk_printf(MSDK_STRING("stat[%llu]: %s=%d;Total=%.3lf;Samples=%lld;StdDev=%.3lf;Min=%.3lf;Max=%.3lf;Avg=%.3lf\n"),
+                    rdtsc(),bufDir,numPipelineid,totalTime*1000,numMeasurements,GetTimeStdDev()*1000,minTime*1000,maxTime*1000,GetAvgTime()*1000);
+            }
+        protected:
+            msdk_char bufDir[MAX_PREF_LEN];
+    };
+
+
     class ExtendedBSStore
     {
     public:
         explicit ExtendedBSStore(mfxU32 size)
         {
             m_pExtBS.resize(size);
-        };
+        }
         virtual ~ExtendedBSStore()
         {
             for (mfxU32 i=0; i < m_pExtBS.size(); i++)
                 MSDK_SAFE_DELETE_ARRAY(m_pExtBS[i].Bitstream.Data);
             m_pExtBS.clear();
 
-        };
+        }
         ExtendedBS* GetNext()
         {
             for (mfxU32 i=0; i < m_pExtBS.size(); i++)
@@ -259,7 +300,7 @@ namespace TranscodingSample
                 }
             }
             return NULL;
-        };
+        }
         void Release(ExtendedBS* pBS)
         {
             for (mfxU32 i=0; i < m_pExtBS.size(); i++)
@@ -271,7 +312,7 @@ namespace TranscodingSample
                 }
             }
             return;
-        };
+        }
     protected:
         std::vector<ExtendedBS> m_pExtBS;
 
@@ -294,9 +335,13 @@ namespace TranscodingSample
         SafetySurfaceBuffer(SafetySurfaceBuffer *pNext);
         virtual ~SafetySurfaceBuffer();
 
+        mfxU32            GetLength();
+        mfxStatus         WaitForSurfaceRelease(mfxU32 msec);
+        mfxStatus         WaitForSurfaceInsertion(mfxU32 msec);
         void              AddSurface(ExtendedSurface Surf);
         mfxStatus         GetSurface(ExtendedSurface &Surf);
         mfxStatus         ReleaseSurface(mfxFrameSurface1* pSurf);
+        void              CancelBuffering();
 
         SafetySurfaceBuffer               *m_pNext;
 
@@ -304,6 +349,9 @@ namespace TranscodingSample
 
         MSDKMutex                 m_mutex;
         std::list<SurfaceDescriptor>       m_SList;
+        bool m_IsBufferingAllowed;
+        MSDKEvent* pRelEvent;
+        MSDKEvent* pInsEvent;
     private:
         DISALLOW_COPY_AND_ASSIGN(SafetySurfaceBuffer);
     };
@@ -312,8 +360,8 @@ namespace TranscodingSample
     class BitstreamProcessor
     {
     public:
-        BitstreamProcessor() {};
-        virtual ~BitstreamProcessor() {};
+        BitstreamProcessor() {}
+        virtual ~BitstreamProcessor() {}
         virtual mfxStatus PrepareBitstream() = 0;
         virtual mfxStatus GetInputBitstream(mfxBitstream **pBitstream) = 0;
         virtual mfxStatus ProcessOutputBitstream(mfxBitstream* pBitstream) = 0;
@@ -377,6 +425,8 @@ namespace TranscodingSample
 
         mfxStatus QueryMFXVersion(mfxVersion *version)
         { MSDK_CHECK_POINTER(m_pmfxSession.get(), MFX_ERR_NULL_PTR); return m_pmfxSession->QueryVersion(version); };
+        inline mfxU32 GetPipelineID(){return m_nID;}
+        inline void SetPipelineID(mfxU32 id){m_nID = id;}
 
     protected:
         virtual mfxStatus CheckRequiredAPIVersion(mfxVersion& version, sInputParams *pParams);
@@ -410,12 +460,13 @@ namespace TranscodingSample
 
         // need for heterogeneous pipeline
         mfxStatus CalculateNumberOfReqFrames(mfxFrameAllocRequest  &pRequestDecOut, mfxFrameAllocRequest  &pRequestVPPOut);
-        void      CorrectNumberOfAllocatedFrames(mfxFrameAllocRequest  *pRequest);
+        void      CorrectNumberOfAllocatedFrames(mfxFrameAllocRequest  *pNewReq);
         void      FreeFrames();
 
         void      FreePreEncAuxPool();
 
-        mfxFrameSurface1* GetFreeSurface(bool isDec);
+        mfxFrameSurface1* GetFreeSurface(bool isDec, mfxU64 timeout);
+        mfxU32 GetFreeSurfacesCount(bool isDec);
         PreEncAuxBuffer*  GetFreePreEncAuxBuffer();
         void SetSurfaceAuxIDR(ExtendedSurface& extSurface, PreEncAuxBuffer* encAuxCtrl, bool bInsertIDR);
 
@@ -441,7 +492,7 @@ namespace TranscodingSample
         mfxStatus RGB4toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
         mfxStatus YUY2toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
 
-        void NoMoreFramesSignal(ExtendedSurface &DecExtSurface);
+        void NoMoreFramesSignal();
         mfxStatus AddLaStreams(mfxU16 width, mfxU16 height);
 
         void LockPreEncAuxBuffer(PreEncAuxBuffer* pBuff);
@@ -534,6 +585,7 @@ namespace TranscodingSample
         std::vector<mfxExtBuffer*> m_PluginExtParams;
         std::vector<mfxExtBuffer*> m_PreEncExtParams;
 
+        mfxU32         m_nID;
         mfxU16         m_AsyncDepth;
         mfxU32         m_nProcessedFramesNum;
 
@@ -570,8 +622,10 @@ namespace TranscodingSample
         int       statisticsWindowSize; // Sliding window size for Statistics
         mfxU32    m_nOutputFramesNum;
 
-        CTimeStatistics inputStatistics;
-        CTimeStatistics outputStatistics;
+        CIOStat inputStatistics;
+        CIOStat outputStatistics;
+
+        bool shouldUseGreedyFormula;
     private:
         DISALLOW_COPY_AND_ASSIGN(CTranscodingPipeline);
 

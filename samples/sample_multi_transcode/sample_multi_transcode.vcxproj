@@ -246,12 +246,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\pipeline_transcode.cpp" />
-    <ClCompile Include="src\sample_multi_transcode.cpp" />
-    <ClCompile Include="src\transcode_utils.cpp" />
-    <ClCompile Include="src\vpp_ext_buffers_storage.cpp" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="include\pipeline_transcode.h" />
     <ClInclude Include="include\sample_multi_transcode.h" />
     <ClInclude Include="include\transcode_utils.h" />
@@ -265,6 +259,12 @@
     <ProjectReference Include="..\sample_plugins\vpp_plugin\vpp_plugin.vcxproj">
       <Project>{d6d9a3b9-5dc0-4025-b27a-751f91aa462d}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\pipeline_transcode.cpp" />
+    <ClCompile Include="src\sample_multi_transcode.cpp" />
+    <ClCompile Include="src\transcode_utils.cpp" />
+    <ClCompile Include="src\vpp_ext_buffers_storage.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

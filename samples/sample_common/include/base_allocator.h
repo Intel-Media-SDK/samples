@@ -77,19 +77,21 @@ public:
 
 protected:
     typedef std::list<mfxFrameAllocResponse>::iterator Iter;
-    static const mfxU32 MEMTYPE_FROM_MASK = MFX_MEMTYPE_FROM_ENCODE | MFX_MEMTYPE_FROM_DECODE | MFX_MEMTYPE_FROM_VPPIN | MFX_MEMTYPE_FROM_VPPOUT;
+    static const mfxU32 MEMTYPE_FROM_MASK = MFX_MEMTYPE_FROM_ENCODE | MFX_MEMTYPE_FROM_DECODE | \
+                                            MFX_MEMTYPE_FROM_VPPIN | MFX_MEMTYPE_FROM_VPPOUT | \
+                                            MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK;
 
     struct UniqueResponse
         : mfxFrameAllocResponse
     {
-        mfxU16 m_cropw;
-        mfxU16 m_croph;
+        mfxU16 m_width;
+        mfxU16 m_height;
         mfxU32 m_refCount;
         mfxU16 m_type;
 
         UniqueResponse()
-            : m_cropw(0)
-            , m_croph(0)
+            : m_width(0)
+            , m_height(0)
             , m_refCount(0)
             , m_type(0)
         {
@@ -97,10 +99,10 @@ protected:
         }
 
         // compare responses by actual frame size, alignment (w and h) is up to application
-        UniqueResponse(const mfxFrameAllocResponse & response, mfxU16 cropw, mfxU16 croph, mfxU16 type)
+        UniqueResponse(const mfxFrameAllocResponse & response, mfxU16 width, mfxU16 height, mfxU16 type)
             : mfxFrameAllocResponse(response)
-            , m_cropw(cropw)
-            , m_croph(croph)
+            , m_width(width)
+            , m_height(height)
             , m_refCount(1)
             , m_type(type)
         {
@@ -108,7 +110,7 @@ protected:
         //compare by resolution
         bool operator () (const UniqueResponse &response)const
         {
-            return m_cropw == response.m_cropw && m_croph == response.m_croph;
+            return m_width <= response.m_width && m_height <= response.m_height && (m_type&response.m_type)&(MFX_MEMTYPE_FROM_DECODE | MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK);
         }
     };
 

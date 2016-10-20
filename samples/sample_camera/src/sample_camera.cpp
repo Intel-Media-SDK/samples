@@ -354,13 +354,23 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         {
             i++;
             if (0 == msdk_strcmp(strInput[i], MSDK_STRING("bggr")))
-                pParams->bayerType     = MFX_CAM_BAYER_BGGR;
+                pParams->inputType     = MFX_CAM_BAYER_BGGR;
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("rggb")))
-                pParams->bayerType     = MFX_CAM_BAYER_RGGB;
+                pParams->inputType     = MFX_CAM_BAYER_RGGB;
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("grbg")))
-                pParams->bayerType     = MFX_CAM_BAYER_GRBG;
+                pParams->inputType     = MFX_CAM_BAYER_GRBG;
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("gbrg")))
-                pParams->bayerType     = MFX_CAM_BAYER_GBRG;
+                pParams->inputType     = MFX_CAM_BAYER_GBRG;
+            else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("argb16")))
+                pParams->inputType     = MFX_FOURCC_ARGB16;
+            else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("abgr16")))
+                pParams->inputType     = MFX_FOURCC_ABGR16;
+            else
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Format %s is unknown."));
+                return MFX_ERR_UNSUPPORTED;
+            }
+
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-b")) || 0 == msdk_strcmp(strInput[i], MSDK_STRING("-bitDepth")))
         {
@@ -371,6 +381,8 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             i++;
             if (0 == msdk_strcmp(strInput[i], MSDK_STRING("argb16")) || 0 == msdk_strcmp(strInput[i], MSDK_STRING("16")))
                 pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_ARGB16;
+            else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("abgr16")))
+                pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_ABGR16;
             else
                 pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_RGB4;
         }
@@ -408,7 +420,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-reset")))
         {
-            resPar.bayerType  = pParams->bayerType;
+            resPar.inputType  = pParams->inputType;
             msdk_strcopy(resPar.strSrcFile, pParams->strSrcFile);
             msdk_strcopy(resPar.strDstFile, pParams->strDstFile);
             resPar.width = pParams->frameInfo[VPP_IN].nWidth;
@@ -429,13 +441,13 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 {
                     i++;
                     if (0 == msdk_strcmp(strInput[i], MSDK_STRING("bggr")))
-                        resPar.bayerType     = MFX_CAM_BAYER_BGGR;
+                        resPar.inputType     = MFX_CAM_BAYER_BGGR;
                     else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("rggb")))
-                        resPar.bayerType     = MFX_CAM_BAYER_RGGB;
+                        resPar.inputType     = MFX_CAM_BAYER_RGGB;
                     else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("grbg")))
-                        resPar.bayerType     = MFX_CAM_BAYER_GRBG;
+                        resPar.inputType     = MFX_CAM_BAYER_GRBG;
                     else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("gbrg")))
-                        resPar.bayerType     = MFX_CAM_BAYER_GBRG;
+                        resPar.inputType     = MFX_CAM_BAYER_GBRG;
                 }
                 else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-bbl")))
                 {
@@ -657,7 +669,7 @@ int main(int argc, char *argv[])
             pParams->frameInfo[VPP_OUT].CropW = pParams->frameInfo[VPP_IN].CropW;
             pParams->frameInfo[VPP_OUT].CropH = pParams->frameInfo[VPP_IN].CropH;
 
-            pParams->bayerType     = Params.resetParams[resetNum].bayerType;
+            pParams->inputType     = Params.resetParams[resetNum].inputType;
             pParams->bHP           = Params.resetParams[resetNum].bHP;
             pParams->hp_diff       = Params.resetParams[resetNum].hp_diff;
             pParams->hp_num        = Params.resetParams[resetNum].hp_num;

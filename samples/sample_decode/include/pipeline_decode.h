@@ -69,6 +69,7 @@ struct sInputParams
     bool    bIsMVC; // true if Multi-View Codec is in use
     bool    bLowLat; // low latency mode
     bool    bCalLat; // latency calculation
+    bool    bUseFullColorRange; //whether to use full color range
     mfxU32  nMaxFPS; //rendering limited by certain fps
     mfxU32  nWallCell;
     mfxU32  nWallW; //number of windows located in each row
@@ -91,8 +92,10 @@ struct sInputParams
     mfxU16  Height;
 
     mfxU32  fourcc;
+    mfxU16  chromaType;
     mfxU32  nFrames;
     mfxU16  eDeinterlace;
+    bool    outI420;
 
     bool    bPerfMode;
     bool    bRenderWin;
@@ -244,6 +247,7 @@ protected: // variables
     bool                    m_bIsCompleteFrame;
     mfxU32                  m_fourcc; // color format of vpp out, i420 by default
     bool                    m_bPrintLatency;
+    bool                    m_bOutI420;
 
     mfxU16                  m_vppOutWidth;
     mfxU16                  m_vppOutHeight;
@@ -254,11 +258,15 @@ protected: // variables
 
     mfxU16                  m_diMode;
     bool                    m_bVppIsUsed;
+    bool                    m_bVppFullColorRange;
     std::vector<msdk_tick>  m_vLatency;
 
     mfxExtVPPDoNotUse       m_VppDoNotUse;      // for disabling VPP algorithms
     mfxExtVPPDeinterlacing  m_VppDeinterlacing;
     std::vector<mfxExtBuffer*> m_VppExtParams;
+
+    mfxExtVPPVideoSignalInfo m_VppVideoSignalInfo;
+    std::vector<mfxExtBuffer*> m_VppSurfaceExtParams;
 
     CHWDevice               *m_hwdev;
 #if D3D_SURFACES_SUPPORT

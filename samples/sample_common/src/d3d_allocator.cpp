@@ -56,6 +56,9 @@ D3DFORMAT ConvertMfxFourccToD3dFormat(mfxU32 fourcc)
         return D3DFMT_P010;
     case MFX_FOURCC_A2RGB10:
         return D3DFMT_A2R10G10B10;
+    case MFX_FOURCC_ABGR16:
+    case MFX_FOURCC_ARGB16:
+        return D3DFMT_A16B16G16R16;
     case MFX_FOURCC_IMC3:
         return D3DFMT_IMC3;
     default:
@@ -128,6 +131,7 @@ mfxStatus D3DFrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
         desc.Format != D3DFMT_P8 &&
         desc.Format != D3DFMT_P010 &&
         desc.Format != D3DFMT_A2R10G10B10 &&
+        desc.Format != D3DFMT_A16B16G16R16 &&
         desc.Format != D3DFMT_IMC3)
         return MFX_ERR_LOCK_MEMORY;
 
@@ -183,6 +187,14 @@ mfxStatus D3DFrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
         ptr->Y = (mfxU8 *)locked.pBits;
         ptr->U = (mfxU8 *)locked.pBits + desc.Height * locked.Pitch;
         ptr->V = ptr->U + 1;
+        break;
+    case D3DFMT_A16B16G16R16:
+        ptr->V16 = (mfxU16*)locked.pBits;
+        ptr->U16 = ptr->V16 + 1;
+        ptr->Y16 = ptr->V16 + 2;
+        ptr->A = (mfxU8*)(ptr->V16 + 3);
+        ptr->PitchHigh = (mfxU16)((mfxU32)locked.Pitch / (1 << 16));
+        ptr->PitchLow  = (mfxU16)((mfxU32)locked.Pitch % (1 << 16));
         break;
     case D3DFMT_IMC3:
         ptr->Pitch = (mfxU16)locked.Pitch;
@@ -272,7 +284,10 @@ mfxStatus D3DFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrameAl
     D3DFORMAT format = ConvertMfxFourccToD3dFormat(request->Info.FourCC);
 
     if (format == D3DFMT_UNKNOWN)
+    {
+        msdk_printf(MSDK_STRING("D3D Allocator: invalid fourcc is provided (%#X), exitting\n"),request->Info.FourCC);
         return MFX_ERR_UNSUPPORTED;
+    }
 
     DWORD   target;
 

@@ -715,7 +715,7 @@ mfxStatus OpenCLRotator180::Process(DataChunk * /*chunk*/)
     }
 
     try {
-        m_pOpenCLRotator180Context->Rotate(m_pIn->Info.Width, m_pIn->Info.Height,
+        m_pOpenCLRotator180Context->Rotate(m_pIn->Info.CropW, m_pIn->Info.CropH,
                                            m_pIn->Data.Pitch, m_pOut->Data.Pitch,
                                            m_pIn->Data.Y, m_pIn->Data.UV,
                                            m_pOut->Data.Y, m_pOut->Data.UV);

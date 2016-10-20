@@ -82,6 +82,17 @@ enum {
     CODEC_MVC = MFX_MAKEFOURCC('M','V','C',' '),
 };
 
+enum
+{
+    MFX_FOURCC_IMC3         = MFX_MAKEFOURCC('I','M','C','3'),
+    MFX_FOURCC_YUV400       = MFX_MAKEFOURCC('4','0','0','P'),
+    MFX_FOURCC_YUV411       = MFX_MAKEFOURCC('4','1','1','P'),
+    MFX_FOURCC_YUV422H      = MFX_MAKEFOURCC('4','2','2','H'),
+    MFX_FOURCC_YUV422V      = MFX_MAKEFOURCC('4','2','2','V'),
+    MFX_FOURCC_YUV444       = MFX_MAKEFOURCC('4','4','4','P'),
+    MFX_FOURCC_RGBP         = MFX_MAKEFOURCC('R','G','B','P')
+};
+
 bool IsDecodeCodecSupported(mfxU32 codecFormat);
 bool IsEncodeCodecSupported(mfxU32 codecFormat);
 bool IsPluginCodecSupported(mfxU32 codecFormat);
@@ -133,6 +144,7 @@ public :
     virtual void      Close();
     virtual mfxStatus Init(const msdk_char *strFileName, const mfxU32 numViews);
     virtual mfxStatus WriteNextFrame(mfxFrameSurface1 *pSurface);
+    virtual mfxStatus WriteNextFrameI420(mfxFrameSurface1 *pSurface);
 
     void SetMultiView() { m_bIsMultiView = true; }
 
@@ -455,7 +467,6 @@ private:
 mfxStatus ConvertFrameRate(mfxF64 dFrameRate, mfxU32* pnFrameRateExtN, mfxU32* pnFrameRateExtD);
 mfxF64 CalculateFrameRate(mfxU32 nFrameRateExtN, mfxU32 nFrameRateExtD);
 mfxU16 GetFreeSurfaceIndex(mfxFrameSurface1* pSurfacesPool, mfxU16 nPoolSize);
-mfxU16 GetFreeSurfaceIndex(mfxFrameSurface1* pSurfacesPool, mfxU16 nPoolSize, mfxU16 step);
 mfxU16 GetFreeSurface(mfxFrameSurface1* pSurfacesPool, mfxU16 nPoolSize);
 mfxStatus InitMfxBitstream(mfxBitstream* pBitstream, mfxU32 nSize);
 

@@ -37,4 +37,11 @@ msdk_tick msdk_time_get_frequency(void)
     return (msdk_tick)MSDK_TIME_MHZ;
 }
 
+mfxU64 rdtsc(void){
+    unsigned int lo,hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((mfxU64)hi << 32) | lo;
+}
+
+
 #endif // #if !defined(_WIN32) && !defined(_WIN64)

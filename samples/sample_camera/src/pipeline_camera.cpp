@@ -70,7 +70,7 @@ mfxU16 gamma_point[64] =
 
 mfxU16 gamma_correct[64] =
 {
-    4,   4,  20,  37,  56,  75,  96, 117, 128, 140, 150, 161, 171, 180, 198, 207,
+    0,   4,  20,  37,  56,  75,  96, 117, 128, 140, 150, 161, 171, 180, 198, 207,
     216, 224, 232, 240, 249, 258, 268, 283, 298, 310, 329, 344, 359, 374, 389, 404,
     420, 435, 451, 466, 482, 498, 515, 531, 548, 565, 582, 599, 617, 635, 653, 671,
     690, 729, 749, 769, 790, 811, 832, 854, 876, 899, 922, 945, 969, 994, 1019,1019
@@ -114,7 +114,11 @@ mfxStatus CCameraPipeline::InitMfxParams(sInputParams *pParams)
     m_mfxVideoParams.vpp.In.CropY += (mfxU16)pParams->frameInfo[VPP_IN].CropY;
     m_mfxVideoParams.vpp.In.FourCC = pParams->frameInfo[VPP_IN].FourCC;
     //Only R16 input supported now, should use chroma format monochrome
-    m_mfxVideoParams.vpp.In.ChromaFormat = MFX_CHROMAFORMAT_MONOCHROME;
+    m_mfxVideoParams.vpp.In.ChromaFormat = MFX_CHROMAFORMAT_YUV444;
+    if (isBayerFormat(pParams->frameInfo[VPP_IN].FourCC))
+    {
+        m_mfxVideoParams.vpp.In.ChromaFormat = MFX_CHROMAFORMAT_MONOCHROME;
+    }
 
     m_mfxVideoParams.vpp.In.BitDepthLuma = (mfxU16)pParams->bitDepth;
 
@@ -131,7 +135,7 @@ mfxStatus CCameraPipeline::InitMfxParams(sInputParams *pParams)
     //Only ARGB onput supported now, should use chroma format 444
     m_mfxVideoParams.vpp.Out.ChromaFormat = MFX_CHROMAFORMAT_YUV444;
 
-    m_mfxVideoParams.vpp.Out.BitDepthLuma = pParams->frameInfo[VPP_OUT].FourCC == MFX_FOURCC_ARGB16 ? m_mfxVideoParams.vpp.In.BitDepthLuma : 8;
+    m_mfxVideoParams.vpp.Out.BitDepthLuma = pParams->frameInfo[VPP_OUT].FourCC == MFX_FOURCC_RGB4 ? 8 : m_mfxVideoParams.vpp.In.BitDepthLuma;
 
     ConvertFrameRate(pParams->frameInfo[VPP_IN].dFrameRate, &m_mfxVideoParams.vpp.In.FrameRateExtN, &m_mfxVideoParams.vpp.In.FrameRateExtD);
     ConvertFrameRate(pParams->frameInfo[VPP_OUT].dFrameRate, &m_mfxVideoParams.vpp.Out.FrameRateExtN, &m_mfxVideoParams.vpp.Out.FrameRateExtD);
@@ -300,7 +304,7 @@ mfxStatus CCameraPipeline::InitMfxParams(sInputParams *pParams)
 
     m_PipeControl.Header.BufferId = MFX_EXTBUF_CAM_PIPECONTROL;
     m_PipeControl.Header.BufferSz = sizeof(m_PipeControl);
-    m_PipeControl.RawFormat = (mfxU16)pParams->bayerType;
+    m_PipeControl.RawFormat = (mfxU16)pParams->inputType;
     m_ExtBuffers.push_back((mfxExtBuffer *)&m_PipeControl);
 
     if (pParams->bDoPadding)
@@ -790,7 +794,7 @@ CCameraPipeline::CCameraPipeline()
     m_bExternalAllocOut = false;
     m_pmfxSurfacesIn = m_pmfxSurfacesOut = NULL;
     m_pmfxSurfacesAux = NULL;
-    m_pRawFileReader = NULL;
+    m_pFileReader = NULL;
     m_pBmpWriter = NULL;
     m_pARGB16FileWriter = NULL;
     m_bIsExtBuffers = false;
@@ -875,16 +879,27 @@ bool operator < (const IGFX_DISPLAY_MODE &l, const IGFX_DISPLAY_MODE& r)
 }
 #endif
 
+bool CCameraPipeline::isBayerFormat(mfxU32 type)
+{
+    if (MFX_FOURCC_ABGR16 == type || MFX_FOURCC_ARGB16 == type)
+        return false;
+
+    return true;
+}
+
 mfxStatus CCameraPipeline::Init(sInputParams *pParams)
 {
     MSDK_CHECK_POINTER(pParams, MFX_ERR_NULL_PTR);
 
     mfxStatus sts = MFX_ERR_NONE;
 
-    m_pRawFileReader = new CRawVideoReader();
+    if ( isBayerFormat(pParams->inputType) )
+        m_pFileReader = new CRawVideoReader();
+    else
+        m_pFileReader = new CARGB16VideoReader();
 
     m_nFrameLimit = pParams->nFramesToProceed;
-    sts = m_pRawFileReader->Init(pParams);
+    sts = m_pFileReader->Init(pParams);
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
     {
@@ -906,7 +921,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
         pParams->frameInfo[VPP_IN].nHeight  = align(pParams->frameInfo[VPP_IN].nHeight);
     }
 
-    pParams->frameInfo[VPP_IN].FourCC = MFX_FOURCC_R16;
+    pParams->frameInfo[VPP_IN].FourCC = isBayerFormat(pParams->inputType) ? MFX_FOURCC_R16 : pParams->inputType;
 
     // set memory type
 
@@ -920,6 +935,15 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
     else if ( pParams->accelType == D3D11 && pParams->memTypeOut == VIDEO)
     {
         m_memTypeOut = D3D11_MEMORY;
+    }
+
+    if ( pParams->accelType == D3D9 && pParams->memTypeIn == VIDEO)
+    {
+            m_memTypeIn  = D3D9_MEMORY;
+    }
+    else if ( pParams->accelType == D3D11 && pParams->memTypeIn == VIDEO)
+    {
+        m_memTypeIn = D3D11_MEMORY;
     }
 
     // API version
@@ -1011,7 +1035,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
     if (m_bOutput)
     {
         // prepare bmp file writer
-        if (pParams->frameInfo[VPP_OUT].FourCC == MFX_FOURCC_ARGB16)
+        if (pParams->frameInfo[VPP_OUT].FourCC != MFX_FOURCC_RGB4)
         {
             m_pARGB16FileWriter = new CRawVideoWriter;
             sts = m_pARGB16FileWriter->Init(pParams);
@@ -1041,7 +1065,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
     m_alphaValue = pParams->alphaValue;
-    m_BayerType = pParams->bayerType;
+    m_BayerType = pParams->inputType;
 
     m_numberOfResets = (mfxU32)pParams->resetParams.size();
     m_resetInterval = pParams->resetInterval;
@@ -1238,9 +1262,9 @@ void CCameraPipeline::Close()
     MFXVideoUSER_UnLoad(m_mfxSession, &m_UID_Camera);
     m_mfxSession.Close();
 
-    if (m_pRawFileReader) {
-        m_pRawFileReader->Close();
-        MSDK_SAFE_DELETE(m_pRawFileReader);
+    if (m_pFileReader) {
+        m_pFileReader->Close();
+        MSDK_SAFE_DELETE(m_pFileReader);
     }
 
     if (m_pBmpWriter) {
@@ -1303,7 +1327,7 @@ mfxStatus CCameraPipeline::Reset(sInputParams *pParams)
     mfxVideoParam oldMfxParams = m_mfxVideoParams;
 
     m_alphaValue = pParams->alphaValue;
-    m_BayerType = pParams->bayerType;
+    m_BayerType = pParams->inputType;
 
 
 //    m_memTypeIn = pParams->memTypeIn;
@@ -1328,7 +1352,7 @@ mfxStatus CCameraPipeline::Reset(sInputParams *pParams)
     MSDK_ZERO_MEMORY(m_mfxVideoParams);
     m_ExtBuffers.clear();
 
-    sts = m_pRawFileReader->Init(pParams);
+    sts = m_pFileReader->Init(pParams);
     MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
     sts = InitMfxParams(pParams);
@@ -1362,8 +1386,7 @@ mfxStatus CCameraPipeline::PrepareInputSurfaces()
 
     mfxU32 frnum = m_nInputFileIndex;
 
-    //m_pRawFileReader->SetStartFileNumber((mfxI32)frnum + 1);
-    m_pRawFileReader->SetStartFileNumber((mfxI32)frnum);
+    m_pFileReader->SetStartFileNumber((mfxI32)frnum);
 
     for (;;) {
         mfxFrameSurface1 *pSurface = 0;
@@ -1397,7 +1420,7 @@ mfxStatus CCameraPipeline::PrepareInputSurfaces()
                     sts = m_pMFXAllocatorIn->Lock(m_pMFXAllocatorIn->pthis, pSurface->Data.MemId, &pSurface->Data);
                 if (MFX_ERR_NONE != sts)
                     break;
-                sts = m_pRawFileReader->LoadNextFrame(&pSurface->Data, &m_mfxVideoParams.vpp.In, m_BayerType);
+                sts = m_pFileReader->LoadNextFrame(&pSurface->Data, &m_mfxVideoParams.vpp.In, m_BayerType);
                 if (MFX_ERR_NONE != sts)
                     break;
 #if D3D_SURFACES_SUPPORT
@@ -1420,7 +1443,7 @@ mfxStatus CCameraPipeline::PrepareInputSurfaces()
                 __itt_task_begin(CamPipeAccel, __itt_null, __itt_null, task4);
 #endif
 
-                sts = m_pRawFileReader->LoadNextFrame(&pSurface->Data, &m_mfxVideoParams.vpp.In, m_BayerType);
+                sts = m_pFileReader->LoadNextFrame(&pSurface->Data, &m_mfxVideoParams.vpp.In, m_BayerType);
 
 #ifdef CAMP_PIPE_ITT
                 __itt_task_end(CamPipeAccel);

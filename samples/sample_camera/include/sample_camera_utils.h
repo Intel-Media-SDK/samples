@@ -168,7 +168,7 @@ typedef struct _resetParams
     mfxU16 cropH;
     mfxU16 cropX;
     mfxU16 cropY;
-    mfxU32 bayerType;
+    mfxU32 inputType;
 
     bool   bDenoise;
     mfxU16 denoiseThreshold;
@@ -211,7 +211,7 @@ struct sInputParams
 
     sOwnFrameInfo frameInfo[2];  // [0] - in, [1] - out
 
-    mfxU32  bayerType;
+    mfxU32  inputType;
     bool    bOutput; // if renderer is enabled, possibly no need in output file
     mfxI32  maxNumBmpFiles;
     AccelType   accelType;
@@ -294,7 +294,7 @@ struct sInputParams
     {
         MSDK_ZERO_MEMORY(*this);
         CameraPluginVersion = 1;
-        bayerType     = MFX_CAM_BAYER_RGGB;
+        inputType     = MFX_CAM_BAYER_RGGB;
         frameInfo[VPP_IN].nWidth = 4096;
         frameInfo[VPP_IN].nHeight = 2160;
         frameInfo[VPP_IN].CropH = frameInfo[VPP_IN].CropW = frameInfo[VPP_OUT].CropH = frameInfo[VPP_OUT].CropW = NOT_INIT_VALUE;
@@ -331,10 +331,19 @@ struct sMemoryAllocator
   mfxFrameAllocResponse* response;
 };
 
-class CRawVideoReader
+class CVideoReader
+{
+public:
+    virtual void       Close() = 0;
+    virtual mfxStatus  Init(sInputParams *pParams) = 0;
+    virtual mfxStatus  LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type) = 0;
+    virtual void       SetStartFileNumber(mfxI32) = 0;
+    virtual ~CVideoReader(){};
+};
+
+class CRawVideoReader: public CVideoReader
 {
 public :
-
   CRawVideoReader();
   virtual ~CRawVideoReader();
 
@@ -348,17 +357,42 @@ protected:
   mfxStatus  LoadNextFrameSequential(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 bayerType);
 
   FILE*       m_fSrc;
-  msdk_char m_FileNameBase[MSDK_MAX_FILENAME_LEN];
-  mfxU32   m_FileNum;
+  msdk_char   m_FileNameBase[MSDK_MAX_FILENAME_LEN];
+  mfxU32      m_FileNum;
 #ifdef CONVERT_TO_LSB
-  mfxU16   *m_pPaddingBuffer;
-  mfxU32    m_paddingBufSize;
+  mfxU16     *m_pPaddingBuffer;
+  mfxU32      m_paddingBufSize;
 #endif
-  bool     m_DoPadding;
-  bool     m_bSingleFileMode;
-  mfxU32   m_Width;
-  mfxU32   m_Height;
+  bool        m_DoPadding;
+  bool        m_bSingleFileMode;
+  mfxU32      m_Width;
+  mfxU32      m_Height;
+};
 
+class CARGB16VideoReader: public CVideoReader
+{
+public :
+    CARGB16VideoReader(): m_fSrc(0), m_bSingleFileMode(false) {};
+    virtual ~CARGB16VideoReader();
+
+    void       Close();
+    mfxStatus  Init(sInputParams *pParams);
+    mfxStatus  LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type);
+    void       SetStartFileNumber(mfxI32 fileNum)
+    {
+        m_FileNum = fileNum;
+    }
+
+protected:
+    mfxStatus  LoadNextFrameSingle    (mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type);
+    mfxStatus  LoadNextFrameSequential(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type);
+
+    FILE*       m_fSrc;
+    msdk_char   m_FileNameBase[MSDK_MAX_FILENAME_LEN];
+    mfxU32      m_FileNum;
+    bool        m_bSingleFileMode;
+    mfxU32      m_Width;
+    mfxU32      m_Height;
 };
 
 class CBmpWriter

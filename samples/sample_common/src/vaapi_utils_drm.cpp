@@ -388,14 +388,12 @@ bool drmRenderer::setupConnection(drmModeRes *resource, drmModeConnector* connec
             // check whether this CRTC works with the encoder
             if (!(encoder->possible_crtcs & (1 << j))) continue;
 
-            if (m_crtcID >= 0) {
-              m_encoderID = connector->encoders[i];
-              m_crtcIndex = j;
-              m_crtcID = resource->crtcs[j];
-              ret = true;
-              msdk_printf(MSDK_STRING("drmrender: found crtc with global search\n"));
-              break;
-            }
+            m_encoderID = connector->encoders[i];
+            m_crtcIndex = j;
+            m_crtcID = resource->crtcs[j];
+            ret = true;
+            msdk_printf(MSDK_STRING("drmrender: found crtc with global search\n"));
+            break;
           }
           m_drmlib.drmModeFreeEncoder(encoder);
           if (ret) break;
@@ -469,7 +467,6 @@ bool drmRenderer::restore()
 
 void* drmRenderer::acquire(mfxMemId mid)
 {
-#ifndef DISABLE_VAAPI_BUFFER_EXPORT
     vaapiMemId* vmid = (vaapiMemId*)mid;
     uint32_t fbhandle=0;
 
@@ -520,9 +517,6 @@ void* drmRenderer::acquire(mfxMemId mid)
     } catch(...) {
         return NULL;
     }
-#else
-    return NULL;
-#endif
 }
 
 void drmRenderer::release(mfxMemId mid, void * mem)

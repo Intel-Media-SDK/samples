@@ -45,5 +45,6 @@ public:
     virtual mfxStatus SetHandle(mfxHandleType type, mfxHDL hdl) = 0;
     virtual mfxStatus RenderFrame(mfxFrameSurface1 * pSurface, mfxFrameAllocator * pmfxAlloc) = 0;
     virtual void      UpdateTitle(double fps) = 0;
+    virtual void      SetMondelloInput(bool isMondelloInputEnabled) = 0;
     virtual void      Close() = 0;
 };

@@ -75,11 +75,14 @@ public:
     mfxStatus PrepareInputSurfaces();
 
 protected:
+
+    bool isBayerFormat(mfxU32 type);
+
     mfxCam3DLutEntry*       m_3dlut_17;
     mfxCam3DLutEntry*       m_3dlut_33;
     mfxCam3DLutEntry*       m_3dlut_65;
     CBmpWriter*             m_pBmpWriter;
-    CRawVideoReader*        m_pRawFileReader;
+    CVideoReader*           m_pFileReader;
     CRawVideoWriter*        m_pARGB16FileWriter;
     mfxU32                  m_nInputFileIndex;
     mfxU32                  m_nFrameIndex; // index of processed frame

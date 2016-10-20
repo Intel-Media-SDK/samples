@@ -154,6 +154,15 @@ inline mfxF64 GetMaxTime()
 #endif
     }
 
+    inline mfxF64 GetTotalTime()
+    {
+#ifdef TIME_STATS
+        return  totalTime;
+#else
+        return 0;
+#endif
+    }
+
     inline void ResetStatistics()
     {
 #ifdef TIME_STATS

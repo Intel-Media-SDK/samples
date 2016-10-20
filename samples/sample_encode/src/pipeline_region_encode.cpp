@@ -96,7 +96,7 @@ mfxStatus CResourcesPool::CreatePlugins(mfxPluginUID pluginGUID, mfxChar* plugin
     for (int i = 0; i < size; i++)
     {
         MFXPlugin* pPlugin = pluginPath ?
-            LoadPlugin(MFX_PLUGINTYPE_VIDEO_ENCODE, m_resources[i].Session, pluginGUID, 1, pluginPath, (mfxU32)strlen(pluginPath)):
+            LoadPlugin(MFX_PLUGINTYPE_VIDEO_ENCODE, m_resources[i].Session, pluginGUID, 1, pluginPath, (mfxU32)msdk_strnlen(pluginPath,1024)):
             LoadPlugin(MFX_PLUGINTYPE_VIDEO_ENCODE, m_resources[i].Session, pluginGUID, 1);
 
         if (pPlugin == NULL)
@@ -381,7 +381,7 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
         *    2.a) we check if codec is distributed as a mediasdk plugin and load it if yes
         *    2.b) if codec is not in the list of mediasdk plugins, we assume, that it is supported inside mediasdk library
         */
-        if (pParams->pluginParams.type == MFX_PLUGINLOAD_TYPE_FILE && strlen(pParams->pluginParams.strPluginPath))
+        if (pParams->pluginParams.type == MFX_PLUGINLOAD_TYPE_FILE && msdk_strnlen(pParams->pluginParams.strPluginPath,sizeof(pParams->pluginParams.strPluginPath)))
         {
             m_pUserModule.reset(new MFXVideoUSER(m_resources[0].Session));
             sts = m_resources.CreatePlugins(pParams->pluginParams.pluginGuid,pParams->pluginParams.strPluginPath);
@@ -449,9 +449,11 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
 
 void CRegionEncodingPipeline::Close()
 {
-    if (m_FileWriters.first) {
-        msdk_printf(MSDK_STRING("Frame number: %u   \r"), m_FileWriters.first->m_nProcessedFramesNum / m_resources.GetSize());
-        msdk_printf(MSDK_STRING("\nEncode fps: %.2lf\n"), (m_FileWriters.first->m_nProcessedFramesNum / m_resources.GetSize())/(m_timeAll/(double)time_get_frequency()));
+    if (m_FileWriters.first)
+    {
+        mfxU32 frameNum = m_resources.GetSize() ? m_FileWriters.first->m_nProcessedFramesNum / m_resources.GetSize() : 0;
+        msdk_printf(MSDK_STRING("Frame number: %u   \r"), frameNum);
+        msdk_printf(MSDK_STRING("\nEncode fps: %.2lf\n"), m_timeAll ? frameNum*((double)time_get_frequency())/m_timeAll : 0);
     }
 
     MSDK_SAFE_DELETE(m_pmfxVPP);
@@ -597,7 +599,7 @@ mfxStatus CRegionEncodingPipeline::Run()
         for (int regId = 0; regId < m_resources.GetSize(); regId++)
         {
             // get a pointer to a free task (bit stream and sync point for encoder)
-            sts = m_resources.GetFreeTask(regId,&pCurrentTask);
+            sts = m_resources.GetFreeTask(regId, &pCurrentTask);
             MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
             for (;;)
@@ -652,7 +654,7 @@ mfxStatus CRegionEncodingPipeline::Run()
         for (int regId = 0; regId < m_resources.GetSize(); regId++)
         {
             // get a free task (bit stream and sync point for encoder)
-            sts = m_resources[regId].TaskPool.GetFreeTask(&pCurrentTask);
+            sts = m_resources.GetFreeTask(regId, &pCurrentTask);
             MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
             for (;;)

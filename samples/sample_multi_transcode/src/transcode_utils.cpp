@@ -101,6 +101,8 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("                Collect performance statistics in specified file\n"));
     msdk_printf(MSDK_STRING("  -timeout <seconds>\n"));
     msdk_printf(MSDK_STRING("                Set time to run transcoding in seconds\n"));
+    msdk_printf(MSDK_STRING("  -greedy \n"));
+    msdk_printf(MSDK_STRING("                Use greedy formula to calculate number of surfaces\n"));
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Pipeline description (general options):\n"));
     msdk_printf(MSDK_STRING("  -i::h265|h264|mpeg2|vc1|mvc|jpeg|vp8 <file-name>\n"));
@@ -117,6 +119,7 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -priority     Use priority for join sessions. 0 - Low, 1 - Normal, 2 - High. Normal by default\n"));
     msdk_printf(MSDK_STRING("  -threads num  Number of session internal threads to create\n"));
     msdk_printf(MSDK_STRING("  -n            Number of frames to transcode \n"));
+    msdk_printf(MSDK_STRING("  -ext_allocator    Force usage of external allocators\n"));
     msdk_printf(MSDK_STRING("  -sys          Force usage of external system allocator\n"));
     msdk_printf(MSDK_STRING("  -fps <frames per second>\n"));
     msdk_printf(MSDK_STRING("                Transcoding frame rate limit\n"));
@@ -148,17 +151,21 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -ws           Sliding window size in frames\n"));
     msdk_printf(MSDK_STRING("  -gop_size     Size of GOP structure in frames \n"));
     msdk_printf(MSDK_STRING("  -dist         Distance between I- or P- key frames \n"));
+    msdk_printf(MSDK_STRING("  -num_ref      Number of reference frames\n"));
     msdk_printf(MSDK_STRING("  -gpucopy::<on,off> Enable or disable GPU copy mode\n"));
     msdk_printf(MSDK_STRING("  -cqp          Constant quantization parameter (CQP BRC) bitrate control method\n"));
     msdk_printf(MSDK_STRING("                              (by default constant bitrate control method is used), should be used along with -qpi, -qpp, -qpb.\n"));
     msdk_printf(MSDK_STRING("  -qpi          Constant quantizer for I frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("  -qpp          Constant quantizer for P frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("  -qpb          Constant quantizer for B frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
+    msdk_printf(MSDK_STRING("  -qsv-ff       Enable QSV-FF mode\n"));
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Pipeline description (vpp options):\n"));
     msdk_printf(MSDK_STRING("  -deinterlace             Forces VPP to deinterlace input stream\n"));
     msdk_printf(MSDK_STRING("  -deinterlace::ADI        Forces VPP to deinterlace input stream using ADI algorithm\n"));
+    msdk_printf(MSDK_STRING("  -deinterlace::ADI_SCD    Forces VPP to deinterlace input stream using ADI_SCD algorithm\n"));
     msdk_printf(MSDK_STRING("  -deinterlace::ADI_NO_REF Forces VPP to deinterlace input stream using ADI no ref algorithm\n"));
+    msdk_printf(MSDK_STRING("  -deinterlace::BOB        Forces VPP to deinterlace input stream using BOB algorithm\n"));
     msdk_printf(MSDK_STRING("  -detail <level>          Enables detail (edge enhancement) filter with provided level(0..100)\n"));
     msdk_printf(MSDK_STRING("  -denoise <level>         Enables denoise filter with provided level (0..100)\n"));
     msdk_printf(MSDK_STRING("  -FRC::PT      Enables FRC filter with Preserve Timestamp algorithm\n"));
@@ -172,7 +179,7 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -opencl       Uses implementation of rotation plugin (enabled with -angle option) through Intel(R) OpenCL\n"));
     msdk_printf(MSDK_STRING("  -w            Destination picture width, invokes VPP resize\n"));
     msdk_printf(MSDK_STRING("  -h            Destination picture height, invokes VPP resize\n"));
-    msdk_printf(MSDK_STRING("  -field_proccessing t2t|t2b|b2t|b2b|fr2fr - Field Copy feature\n"));
+    msdk_printf(MSDK_STRING("  -field_processing t2t|t2b|b2t|b2b|fr2fr - Field Copy feature\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp <sourcesNum>      Enables composition from several decoding sessions. Result is written to the file\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_only <sourcesNum> Enables composition from several decoding sessions. Result is shown on screen\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_dst_x             X position of this stream in composed stream (should be used in decoder session)\n"));
@@ -272,6 +279,8 @@ CmdProcessor::CmdProcessor()
     m_PerfFILE = NULL;
     m_parName = NULL;
     m_nTimeout = 0;
+    statisticsWindowSize = 0;
+    shouldUseGreedyFormula=false;
 
 } //CmdProcessor::CmdProcessor()
 
@@ -340,6 +349,10 @@ mfxStatus CmdProcessor::ParseCmdLine(int argc, msdk_char *argv[])
         {
             PrintHelp();
             return MFX_ERR_UNSUPPORTED;
+        }
+        else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-greedy")))
+        {
+            shouldUseGreedyFormula=true;
         }
         else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-p")))
         {
@@ -533,6 +546,8 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
     TranscodingSample::sInputParams InputParams;
     if (m_nTimeout)
         InputParams.nTimeout = m_nTimeout;
+
+    InputParams.shouldUseGreedyFormula = shouldUseGreedyFormula;
 
     InputParams.statisticsWindowSize = statisticsWindowSize;
 
@@ -739,6 +754,16 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-num_ref")))
+        {
+            VAL_CHECK(i + 1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.NumRefFrame))
+            {
+                PrintError(MSDK_STRING("Number of reference frames \"%s\" is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
         else if(0 == msdk_strcmp(argv[i], MSDK_STRING("-u")))
         {
             VAL_CHECK(i+1 == argc, i, argv[i]);
@@ -899,6 +924,17 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
             InputParams.libvaBackend = MFX_LIBVA_X11;
         }
 #endif
+
+#if defined(LIBVA_WAYLAND_SUPPORT)
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-rwld")))
+        {
+            InputParams.nRenderWinX = 0;
+            InputParams.nRenderWinY = 0;
+            InputParams.bPerfMode = false;
+            InputParams.libvaBackend = MFX_LIBVA_WAYLAND;
+        }
+#endif
+
 #if defined(LIBVA_DRM_SUPPORT)
         else if (0 == msdk_strncmp(argv[i], MSDK_STRING("-rdrm"), 5))
         {
@@ -1103,6 +1139,10 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 PrintError(MSDK_STRING("Quantizer for B frames is invalid"));
                 return MFX_ERR_UNSUPPORTED;
             }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-qsv-ff")))
+        {
+            InputParams.enableQSVFF=true;
         }
         MOD_SMT_PARSE_INPUT
         else if((stsExtBuf = CVPPExtBuffersStorage::ParseCmdLine(argv,argc,i,&InputParams,skipped))
@@ -1316,6 +1356,11 @@ mfxStatus CmdProcessor::VerifyAndCorrectInputParams(TranscodingSample::sInputPar
     {
         PrintError(MSDK_STRING("MaxSliceSize option is supported only with H.264 encoder!"));
         return MFX_ERR_UNSUPPORTED;
+    }
+
+    if(InputParams.enableQSVFF && InputParams.eMode == Sink)
+    {
+        msdk_printf(MSDK_STRING("WARNING: -qsv-ff option is not valid for decoder-only sessions, this parameter will be ignored.\n"));
     }
 
     std::map<mfxU32, sPluginParams>::iterator it;

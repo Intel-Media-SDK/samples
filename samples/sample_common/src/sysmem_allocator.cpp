@@ -175,6 +175,7 @@ mfxStatus SysMemFrameAllocator::UnlockFrame(mfxMemId mid, mfxFrameData *ptr)
         ptr->Y     = 0;
         ptr->U     = 0;
         ptr->V     = 0;
+        ptr->A     = 0;
     }
 
     return MFX_ERR_NONE;

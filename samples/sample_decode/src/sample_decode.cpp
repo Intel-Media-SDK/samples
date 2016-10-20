@@ -55,11 +55,15 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-h]                      - output height\n"));
     msdk_printf(MSDK_STRING("   [-di bob/adi]             - enable deinterlacing BOB/ADI\n"));
     msdk_printf(MSDK_STRING("\n"));
+    msdk_printf(MSDK_STRING("JPEG Chroma Type:\n"));
+    msdk_printf(MSDK_STRING("   [-jpeg_rgb] - RGB Chroma Type\n"));
     msdk_printf(MSDK_STRING("Output format parameters:\n"));
-    msdk_printf(MSDK_STRING("   [-i420]                   - by default\n"));
-    msdk_printf(MSDK_STRING("   [-rgb4]\n"));
-    msdk_printf(MSDK_STRING("   [-p010]\n"));
-    msdk_printf(MSDK_STRING("   [-a2rgb10]\n"));
+    msdk_printf(MSDK_STRING("   [-i420] - pipeline output format: NV12, output file format: I420\n"));
+    msdk_printf(MSDK_STRING("   [-nv12] - pipeline output format: NV12, output file format: NV12\n"));
+    msdk_printf(MSDK_STRING("   [-rgb4] - pipeline output format: RGB4, output file format: RGB4\n"));
+    msdk_printf(MSDK_STRING("   [-rgb4_fcr] - pipeline output format: RGB4 in full color range, output file format: RGB4 in full color range\n"));
+    msdk_printf(MSDK_STRING("   [-p010] - pipeline output format: P010, output file format: P010\n"));
+    msdk_printf(MSDK_STRING("   [-a2rgb10] - pipeline output format: A2RGB10, output file format: A2RGB10\n"));
     msdk_printf(MSDK_STRING("\n"));
 #if D3D_SURFACES_SUPPORT
     msdk_printf(MSDK_STRING("   [-d3d]                    - work with d3d9 surfaces\n"));
@@ -90,12 +94,12 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
 #endif
 #if defined(LIBVA_DRM_SUPPORT)
     msdk_printf(MSDK_STRING("   [-rdrm]                   - render decoded data in a thru DRM frame buffer\n"));
-    msdk_printf(MSDK_STRING("   [-window x y w h]\n"));
+    msdk_printf(MSDK_STRING("   [-window x y w h]         - set render window position and size\n"));
 #endif
     msdk_printf(MSDK_STRING("   [-low_latency]            - configures decoder for low latency mode (supported only for H.264 and JPEG codec)\n"));
     msdk_printf(MSDK_STRING("   [-calc_latency]           - calculates latency during decoding and prints log (supported only for H.264 and JPEG codec)\n"));
     msdk_printf(MSDK_STRING("   [-async]                  - depth of asynchronous pipeline. default value is 4. must be between 1 and 20\n"));
-    msdk_printf(MSDK_STRING("   [-no_gpu_copy]            - disable GPU Copy functionality\n"));
+    msdk_printf(MSDK_STRING("   [-gpucopy::<on,off>] Enable or disable GPU copy mode\n"));
 #if !defined(_WIN32) && !defined(_WIN64)
     msdk_printf(MSDK_STRING("   [-threads_num]            - number of mediasdk task threads\n"));
     msdk_printf(MSDK_STRING("   [-threads_schedtype]      - scheduling type of mediasdk task threads\n"));
@@ -127,6 +131,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
 
     // set default implementation
     pParams->bUseHWLib = true;
+    pParams->bUseFullColorRange = false;
 #if defined(LIBVA_SUPPORT)
     pParams->libvaBackend = MFX_LIBVA_DRM;
 #endif
@@ -361,7 +366,11 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
-        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-no_gpu_copy")))
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-gpucopy::on")))
+        {
+            pParams->gpuCopy = MFX_GPUCOPY_ON;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-gpucopy::off")))
         {
             pParams->gpuCopy = MFX_GPUCOPY_OFF;
         }
@@ -484,13 +493,30 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-jpeg_rgb")))
+        {
+            if(MFX_CODEC_JPEG == pParams->videoType)
+            {
+               pParams->chromaType = MFX_JPEG_COLORFORMAT_RGB;
+            }
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-i420")))
+        {
+            pParams->fourcc = MFX_FOURCC_NV12;
+            pParams->outI420 = true;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-nv12")))
         {
             pParams->fourcc = MFX_FOURCC_NV12;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-rgb4")))
         {
             pParams->fourcc = MFX_FOURCC_RGB4;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-rgb4_fcr")))
+        {
+            pParams->fourcc = MFX_FOURCC_RGB4;
+            pParams->bUseFullColorRange = true;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-p010")))
         {
@@ -579,7 +605,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     {
         if (!pParams->scrWidth || !pParams->scrHeight)
         {
-            msdk_printf(MSDK_STRING("error: for screen capture, width and height must be specified manually (-w and -h)"));
+            msdk_printf(MSDK_STRING("error: for screen capture, width and height must be specified manually (-scr:w and -scr:h)"));
             return MFX_ERR_UNSUPPORTED;
         }
     }

@@ -21,6 +21,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #define __TIME_DEFS_H__
 
 #include "mfxdefs.h"
+#include "mfx_itt_trace.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 
@@ -42,8 +43,17 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include <unistd.h>
 
-#define MSDK_SLEEP(msec) usleep(1000*msec)
-#define MSDK_USLEEP(usec) usleep(usec)
+#define MSDK_SLEEP(msec) \
+  do { \
+    MFX_ITT_TASK("MSDK_SLEEP"); \
+    usleep(1000*msec); \
+  } while(0)
+
+#define MSDK_USLEEP(usec) \
+  do { \
+    MFX_ITT_TASK("MSDK_USLEEP"); \
+    usleep(usec); \
+  } while(0)
 
 #endif // #if defined(_WIN32) || defined(_WIN64)
 
@@ -53,5 +63,6 @@ typedef mfxI64 msdk_tick;
 
 msdk_tick msdk_time_get_tick(void);
 msdk_tick msdk_time_get_frequency(void);
+mfxU64 rdtsc(void);
 
 #endif // #ifndef __TIME_DEFS_H__

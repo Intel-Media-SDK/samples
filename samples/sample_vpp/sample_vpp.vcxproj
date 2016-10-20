@@ -278,11 +278,20 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\sample_vpp.cpp" />
+    <ClCompile Include="src\sample_vpp_config.cpp" />
+    <ClCompile Include="src\sample_vpp_frc.cpp" />
+    <ClCompile Include="src\sample_vpp_frc_adv.cpp" />
     <ClCompile Include="src\sample_vpp_parser.cpp" />
+    <ClCompile Include="src\sample_vpp_pts.cpp" />
+    <ClCompile Include="src\sample_vpp_roi.cpp" />
     <ClCompile Include="src\sample_vpp_utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\sample_vpp_config.h" />
+    <ClInclude Include="include\sample_vpp_frc.h" />
+    <ClInclude Include="include\sample_vpp_frc_adv.h" />
+    <ClInclude Include="include\sample_vpp_pts.h" />
+    <ClInclude Include="include\sample_vpp_roi.h" />
     <ClInclude Include="include\sample_vpp_utils.h" />
   </ItemGroup>
   <ItemGroup>

@@ -115,14 +115,17 @@ mfxStatus BaseFrameAllocator::AllocFrames(mfxFrameAllocRequest *request, mfxFram
 
     mfxStatus sts = MFX_ERR_NONE;
 
-    if ( (request->Type & MFX_MEMTYPE_EXTERNAL_FRAME) && (request->Type & MFX_MEMTYPE_FROM_DECODE) )
+    if ( (request->Type & MFX_MEMTYPE_EXTERNAL_FRAME) &&
+         ( (request->Type & MFX_MEMTYPE_FROM_DECODE) ||
+           (request->Type & MFX_MEMTYPE_FROM_ENC) ||
+           (request->Type & MFX_MEMTYPE_FROM_PAK) ) )
     {
         bool foundInCache = false;
         // external decoder allocations
         std::list<UniqueResponse>::iterator
             it = m_ExtResponses.begin(),
             et = m_ExtResponses.end();
-        UniqueResponse checker(*response, request->Info.CropW, request->Info.CropH, 0);
+        UniqueResponse checker(*response, request->Info.Width, request->Info.Height, request->Type);
         for (; it != et; ++it)
         {
             // same decoder and same size
@@ -145,7 +148,7 @@ mfxStatus BaseFrameAllocator::AllocFrames(mfxFrameAllocRequest *request, mfxFram
             if (sts == MFX_ERR_NONE)
             {
                 response->AllocId = request->AllocId;
-                m_ExtResponses.push_back(UniqueResponse(*response, request->Info.CropW, request->Info.CropH, request->Type & MEMTYPE_FROM_MASK));
+                m_ExtResponses.push_back(UniqueResponse(*response, request->Info.Width, request->Info.Height, request->Type & MEMTYPE_FROM_MASK));
             }
         }
     }

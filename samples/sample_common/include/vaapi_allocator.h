@@ -38,10 +38,8 @@ struct vaapiMemId
     unsigned int m_fourcc;
     mfxU8*       m_sys_buffer;
     mfxU8*       m_va_buffer;
-#ifndef DISABLE_VAAPI_BUFFER_EXPORT
     // buffer info to support surface export
     VABufferInfo m_buffer_info;
-#endif
     // pointer to private export data
     void*        m_custom;
 };

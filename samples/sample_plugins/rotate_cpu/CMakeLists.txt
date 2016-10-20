@@ -10,4 +10,5 @@ set(LDFLAGS "${LDFLAGS} -Wl,--version-script=${PLUGINS_COMMON_PATH}/mfx_plugin.m
 list(APPEND sources.plus "${PLUGINS_COMMON_PATH}/mfx_plugin_module.cpp")
 list( APPEND LIBS sample_common)
 
+set(DEPENDENCIES libmfx dl)
 make_library(sample_rotate_plugin none shared)

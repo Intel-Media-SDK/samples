@@ -7,9 +7,14 @@ For detailed information about Media SDK Samples please refer to the respective 
 ```sh
 git clone https://github.com/Intel-Media-SDK/samples.git
 cd samples/samples
+perl build.pl --cmake=intel64.make.debug --mfx-home=/path/to/mediasdk/headers --clean
+make -j8 -C __cmake/intel64.make.debug
+```
+
+You can setup path to MSDK header thourgh environment variable (`--mfx-home` is not required in this case):
+```
 export MFX_HOME=/path/to/mediasdk/headers
 perl build.pl --cmake=intel64.make.debug
-make -j8 -C __cmake/intel64.make.debug
 ```
 
 `MFX_HOME` for installed MSS is `/opt/intel/mediasdk`.

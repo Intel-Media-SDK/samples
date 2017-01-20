@@ -166,7 +166,7 @@ mfxStatus CCameraPipeline::InitMfxParams(sInputParams *pParams)
     if (pParams->bGamma)
     {
         sts = AllocAndInitCamGammaCorrection(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitCamGammaCorrection failed");
         if ( pParams->b3DLUTGamma )
         {
             b_3DLUT_Gamma = true;
@@ -256,49 +256,49 @@ mfxStatus CCameraPipeline::InitMfxParams(sInputParams *pParams)
     if (pParams->bVignette)
     {
         sts = AllocAndInitVignetteCorrection(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitVignetteCorrection failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_Vignette);
     }
 
     if (pParams->bBlackLevel)
     {
         sts = AllocAndInitCamBlackLevelCorrection(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitCamBlackLevelCorrection failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_BlackLevelCorrection);
     }
 
     if (pParams->bHP)
     {
         sts = AllocAndInitCamHotPixelRemoval(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitCamHotPixelRemoval failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_HP);
     }
 
     if (pParams->bBayerDenoise)
     {
         sts = AllocAndInitDenoise(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitDenoise failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_Denoise);
     }
 
     if (pParams->bWhiteBalance)
     {
         sts = AllocAndInitCamWhiteBalance(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitCamWhiteBalance failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_WhiteBalance);
     }
 
     if (pParams->bCCM)
     {
         sts = AllocAndInitCamCCM(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitCamCCM failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_CCM);
     }
 
     if (pParams->bLens)
     {
         sts = AllocAndInitCamLens(pParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitCamLens failed");
         m_ExtBuffers.push_back((mfxExtBuffer *)&m_Lens);
     }
 
@@ -347,7 +347,7 @@ mfxStatus CCameraPipeline::CreateHWDevice()
         window,
         m_bIsRender ? 1 : 0,
         MSDKAdapter::GetNumber(m_mfxSession));
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_hwdev->Init failed");
 
     if (m_bIsRender)
         m_d3dRender.SetHWDevice(m_hwdev);
@@ -374,7 +374,7 @@ mfxStatus CCameraPipeline::AllocFrames()
         msdk_printf(MSDK_STRING("WARNING: partial acceleration\n"));
         MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
     }
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->QueryIOSurf failed");
 
     // kta !!! tmp ???
     Request[VPP_IN].NumFrameSuggested *= NUM_INPUT_FRAMES_MULTIPLIER;
@@ -395,12 +395,12 @@ mfxStatus CCameraPipeline::AllocFrames()
     // alloc frames for vpp
     // [IN]
     sts = InitSurfaces(&allocatorIn, &(Request[VPP_IN]), &(m_mfxVideoParams.vpp.In), m_bExternalAllocIn);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitSurfaces failed");
 
     // [OUT]
     sMemoryAllocator allocatorOut = {m_pMFXAllocatorOut, m_pmfxAllocatorParamsOut, &m_pmfxSurfacesOut, &m_mfxResponseOut};
     sts = InitSurfaces(&allocatorOut, &(Request[VPP_OUT]), &(m_mfxVideoParams.vpp.Out), m_bExternalAllocOut);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitSurfaces failed");
 
 #if 0
     if (m_alphaValue >= 0) {
@@ -442,7 +442,7 @@ mfxStatus CCameraPipeline::AllocFrames()
         sMemoryAllocator allocator = {m_pMFXd3dAllocator, m_pmfxd3dAllocatorParams, &m_pmfxSurfacesAux, &m_mfxResponseAux};
 
         sts = InitSurfaces(&allocator, &Request, &(m_mfxVideoParams.vpp.Out), true);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "InitSurfaces failed");
     }
 
     m_lastAllocRequest[VPP_IN] = Request[VPP_IN];
@@ -461,15 +461,9 @@ mfxStatus CCameraPipeline::ReallocFrames(mfxVideoParam *oldMfxPar)
     mfxFrameAllocRequest Request[2];
     MSDK_ZERO_MEMORY(Request);
 
-    //mfxFrameAllocRequest oldRequest[2];
-    //MSDK_ZERO_MEMORY(oldRequest);
-
-    //sts = m_pmfxVPP->QueryIOSurf(oldMfxPar, oldRequest);
-    //MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-
     // calculate number of surfaces required for camera pipe
     sts = m_pmfxVPP->QueryIOSurf(&m_mfxVideoParams, Request);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->QueryIOSurf failed");
 
     if (m_memTypeIn != SYSTEM_MEMORY) {
         Request[VPP_IN].Type |= MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET;
@@ -510,98 +504,6 @@ mfxStatus CCameraPipeline::ReallocFrames(mfxVideoParam *oldMfxPar)
         m_pmfxSurfacesIn[j].Info = m_mfxVideoParams.vpp.In;
     }
 
-    //MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesIn);
-    //if (m_pMFXAllocatorIn)
-    //    m_pMFXAllocatorIn->Free(m_pMFXAllocatorIn->pthis, &m_mfxResponseIn);
-    //sMemoryAllocator allocatorIn = {m_pMFXAllocatorIn, m_pmfxAllocatorParamsIn, &m_pmfxSurfacesIn, &m_mfxResponseIn};
-    //sts = InitSurfaces(&allocatorIn, &(Request[VPP_IN]), &(m_mfxVideoParams.vpp.In), m_bExternalAllocIn);
-    //MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-
-    //MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesOut);
-    //if (m_pMFXAllocatorOut)
-    //    m_pMFXAllocatorOut->Free(m_pMFXAllocatorOut->pthis, &m_mfxResponseOut);
-    //sMemoryAllocator allocatorOut = {m_pMFXAllocatorOut, m_pmfxAllocatorParamsOut, &m_pmfxSurfacesOut, &m_mfxResponseOut};
-    //sts = InitSurfaces(&allocatorOut, &(Request[VPP_OUT]), &(m_mfxVideoParams.vpp.Out), m_bExternalAllocOut);
-    //MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-
-
-
-//    bool reallOut = (Request[VPP_OUT].Info.Width != oldRequest[VPP_OUT].Info.Width || Request[VPP_OUT].Info.Height != oldRequest[VPP_OUT].Info.Height);
- //   how to avoid realloc ?
-
-
-    //MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesIn);
-    //if (m_pMFXAllocatorIn)
-    //    m_pMFXAllocatorIn->Free(m_pMFXAllocatorIn->pthis, &m_mfxResponseIn);
-    //MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesOut);
-    //if (m_pMFXAllocatorOut)
-    //    m_pMFXAllocatorOut->Free(m_pMFXAllocatorOut->pthis, &m_mfxResponseOut);
-    //DeleteAllocator();
-    //CreateAllocator();
-    //Request[VPP_IN].NumFrameSuggested *= 2;
-    //sMemoryAllocator allocatorIn = {m_pMFXAllocatorIn, m_pmfxAllocatorParamsIn, &m_pmfxSurfacesIn, &m_mfxResponseIn};
-    //sts = InitSurfaces(&allocatorIn, &(Request[VPP_IN]), &(m_mfxVideoParams.vpp.In), m_bExternalAllocIn);
-    //MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-
-    //sMemoryAllocator allocatorOut = {m_pMFXAllocatorOut, m_pmfxAllocatorParamsOut, &m_pmfxSurfacesOut, &m_mfxResponseOut};
-    //sts = InitSurfaces(&allocatorOut, &(Request[VPP_OUT]), &(m_mfxVideoParams.vpp.Out), m_bExternalAllocOut);
-    //MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-
-
-    //if (!realloc)
-    //    return MFX_ERR_NONE;
-
-//    if (realloc[VPP_IN]) {
-//        MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesIn);
-//        if (m_pMFXAllocatorIn)
-//            m_pMFXAllocatorIn->Free(m_pMFXAllocatorIn->pthis, &m_mfxResponseIn);
-//
-//        Request[VPP_IN].NumFrameSuggested *= 2;
-//        sMemoryAllocator allocatorIn = {m_pMFXAllocatorIn, m_pmfxAllocatorParamsIn, &m_pmfxSurfacesIn, &m_mfxResponseIn};
-//        sts = InitSurfaces(&allocatorIn, &(Request[VPP_IN]), &(m_mfxVideoParams.vpp.In), m_bExternalAllocIn);
-//        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-//    }
-//
-
-//    bool reallOut = (Request[VPP_OUT].Info.Width != oldRequest[VPP_OUT].Info.Width || Request[VPP_OUT].Info.Height != oldRequest[VPP_OUT].Info.Height);
-//
-//    if (realloc[VPP_OUT] || (reallOut && (m_memTypeOut != SYSTEM_MEMORY))) {
-//        MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesOut);
-//        if (m_pMFXAllocatorOut)
-//            m_pMFXAllocatorOut->Free(m_pMFXAllocatorOut->pthis, &m_mfxResponseOut);
-//
-//        sMemoryAllocator allocatorOut = {m_pMFXAllocatorOut, m_pmfxAllocatorParamsOut, &m_pmfxSurfacesOut, &m_mfxResponseOut};
-//        sts = InitSurfaces(&allocatorOut, &(Request[VPP_OUT]), &(m_mfxVideoParams.vpp.Out), m_bExternalAllocOut);
-//        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-//    } else if (reallOut) { // m_memTypeOut == SYSTEM_MEMORY
-//        for (int j = 0; j < m_mfxResponseOut.NumFrameActual; j++) {
-//            m_pmfxSurfacesOut[j].Info = m_mfxVideoParams.vpp.Out;
-//
-////            m_pmfxSurfacesOut[j].Info.Width = Request[VPP_OUT].Info.Width;
-////            m_pmfxSurfacesOut[j].Info.Height = Request[VPP_OUT].Info.Height;
-//        }
-//    }
-
-    //if (m_memType == SYSTEM_MEMORY && m_bIsRender && reallOut) {
-
-    //    MSDK_SAFE_DELETE_ARRAY(m_pmfxSurfacesAux);
-
-    //    if (m_pMFXd3dAllocator)
-    //        m_pMFXd3dAllocator->Free(m_pMFXd3dAllocator->pthis, &m_mfxResponseAux);
-
-    //    mfxFrameAllocRequest Request;
-    //    MSDK_ZERO_MEMORY(Request);
-
-    //    Request.Info = m_mfxVideoParams.vpp.Out;
-    //    Request.NumFrameMin = Request.NumFrameSuggested = 1;
-    //    Request.Type = MFX_MEMTYPE_FROM_VPPOUT | MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET;
-    //
-    //    sMemoryAllocator allocator = {m_pMFXd3dAllocator, m_pmfxd3dAllocatorParams, &m_pmfxSurfacesAux, &m_mfxResponseAux};
-
-    //    sts = InitSurfaces(&allocator, &Request, &(m_mfxVideoParams.vpp.Out), true);
-    //    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
-    //}
-
     return MFX_ERR_NONE;
 }
 
@@ -615,16 +517,16 @@ mfxStatus CCameraPipeline::CreateAllocator()
     m_bExternalAllocIn = false;
 
     sts = CreateHWDevice();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CreateHWDevice failed");
 
     // provide device manager to MediaSDK
     //mfxHDL hdl = NULL;
     mfxHandleType hdl_t =  D3D11 == m_accelType ? MFX_HANDLE_D3D11_DEVICE : MFX_HANDLE_D3D9_DEVICE_MANAGER;
 
     sts = m_hwdev->GetHandle(hdl_t, &hdl);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_hwdev->GetHandle failed");
     sts = m_mfxSession.SetHandle(hdl_t, hdl);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_mfxSession.SetHandle failed");
 
     if (m_memTypeIn != SYSTEM_MEMORY || m_memTypeOut != SYSTEM_MEMORY)
     {
@@ -672,7 +574,7 @@ mfxStatus CCameraPipeline::CreateAllocator()
         thus we demonstrate "external allocator" usage model.
         Call SetAllocator to pass allocator to mediasdk */
         sts = m_mfxSession.SetFrameAllocator(m_pMFXd3dAllocator);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_mfxSession.SetFrameAllocator failed");
     }
 
     if (m_memTypeIn == SYSTEM_MEMORY || m_memTypeOut == SYSTEM_MEMORY)
@@ -720,18 +622,18 @@ mfxStatus CCameraPipeline::CreateAllocator()
         m_pmfxd3dAllocatorParams = pd3dAllocParams;
 
         sts = m_pMFXd3dAllocator->Init(m_pmfxd3dAllocatorParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pMFXd3dAllocator->Init failed");
 
         sts = m_mfxSession.SetFrameAllocator(m_pMFXd3dAllocator);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_mfxSession.SetFrameAllocator failed");
     }
     // initialize memory allocator(s)
     sts = m_pMFXAllocatorIn->Init(m_pmfxAllocatorParamsIn);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pMFXAllocatorIn->Init failed");
 
     if (m_pMFXAllocatorOut != m_pMFXAllocatorIn) {
         sts = m_pMFXAllocatorOut->Init(m_pmfxAllocatorParamsOut);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pMFXAllocatorOut->Init failed");
     }
 
     return MFX_ERR_NONE;
@@ -776,6 +678,14 @@ void CCameraPipeline::DeleteAllocator()
 
 CCameraPipeline::CCameraPipeline()
 {
+    m_resetInterval = 0;
+    MSDK_ZERO_MEMORY(m_Padding);
+    MSDK_ZERO_MEMORY(m_PipeControl);
+    b_3DLUT_Gamma=false;
+    m_numberOfResets=0;
+    m_nFrameLimit=0;
+    m_BayerType=0;
+
     m_nFrameIndex = 0;
     m_nInputFileIndex = 0;
     m_pmfxVPP = NULL;
@@ -900,7 +810,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
 
     m_nFrameLimit = pParams->nFramesToProceed;
     sts = m_pFileReader->Init(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pFileReader->Init failed");
 
     {
         if (pParams->frameInfo[VPP_IN].CropW == NOT_INIT_VALUE)
@@ -968,7 +878,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
             sts = m_mfxSession.Init(impl & !MFX_IMPL_HARDWARE_ANY | MFX_IMPL_HARDWARE, &version);
     }
 
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_mfxSession.Init failed");
 
     // create VPP
     m_pmfxVPP = new MFXVideoVPP(m_mfxSession);
@@ -1008,13 +918,13 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
     // otherwise an own device will be created by MSDK
 
     sts = CreateAllocator();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CreateAllocator failed");
 
     //Load library plug-in
     {
         MSDK_MEMCPY(m_UID_Camera.Data, CAMERA_PIPE_UID, 16);
         sts = MFXVideoUSER_Load(m_mfxSession, &m_UID_Camera, pParams->CameraPluginVersion);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "MFXVideoUSER_Load failed");
     }
 
     if (pParams->bGamma)
@@ -1029,7 +939,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
     }
 
     sts = InitMfxParams(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitMfxParams failed");
 
     SetOutputfileFlag(pParams->bOutput);
     if (m_bOutput)
@@ -1044,13 +954,13 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
             m_pBmpWriter = new CBmpWriter;
             sts = m_pBmpWriter->Init(pParams->strDstFile, m_mfxVideoParams.vpp.Out.CropW, m_mfxVideoParams.vpp.Out.CropH, pParams->maxNumBmpFiles);
         }
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "<Out format>Writer->Init failed");
     }
 
     sts = m_pmfxVPP->Query(&m_mfxVideoParams, &m_mfxVideoParams);
     MSDK_IGNORE_MFX_STS(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
     MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Query failed");
 
     sts = m_pmfxVPP->Init(&m_mfxVideoParams);
     if (MFX_WRN_PARTIAL_ACCELERATION == sts)
@@ -1058,11 +968,11 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
         msdk_printf(MSDK_STRING("WARNING: partial acceleration\n"));
         MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
     }
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Init failed");
 
     // ??? need this ?
     sts = m_pmfxVPP->GetVideoParam(&m_mfxVideoParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->GetVideoParam failed");
 
     m_alphaValue = pParams->alphaValue;
     m_BayerType = pParams->inputType;
@@ -1071,7 +981,7 @@ mfxStatus CCameraPipeline::Init(sInputParams *pParams)
     m_resetInterval = pParams->resetInterval;
 
     sts = AllocFrames();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "AllocFrames failed");
 
     return MFX_ERR_NONE;
 }
@@ -1275,13 +1185,15 @@ void CCameraPipeline::Close()
         MSDK_SAFE_DELETE(m_pARGB16FileWriter);
     }
 
-    // allocator if used as external for MediaSDK must be deleted after decoder
-    DeleteAllocator();
-
 #if D3D_SURFACES_SUPPORT
    if (m_bIsRender)
        m_d3dRender.Close();
 #endif
+
+    // allocator if used as external for MediaSDK must be deleted after decoder
+    DeleteAllocator();
+
+
 
     return;
 }
@@ -1294,18 +1206,18 @@ mfxStatus CCameraPipeline::Reset(sInputParams *pParams)
 //    // close VPP
     sts = m_pmfxVPP->Close();
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_INITIALIZED);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Close failed");
 //
 //    // free allocated frames
 //    DeleteFrames();
 //
 //    // initialize parameters with values from parsed header
     sts = InitMfxParams(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitMfxParams failed");
 //
 //    // in case of HW accelerated decode frames must be allocated prior to decoder initialization
 //    sts = AllocFrames();
-//    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+//    MSDK_CHECK_STATUS(sts, MFX_ERR_NONE, sts);
 //
 //    // init VPP
     sts = m_pmfxVPP->Init(&m_mfxVideoParams);
@@ -1314,7 +1226,7 @@ mfxStatus CCameraPipeline::Reset(sInputParams *pParams)
 //        msdk_printf(MSDK_STRING("WARNING: partial acceleration\n"));
 //        MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
 //    }
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Init failed");
 
     return MFX_ERR_NONE;
 }
@@ -1353,16 +1265,16 @@ mfxStatus CCameraPipeline::Reset(sInputParams *pParams)
     m_ExtBuffers.clear();
 
     sts = m_pFileReader->Init(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pFileReader->Init failed");
 
     sts = InitMfxParams(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitMfxParams failed");
 
     sts =  m_pmfxVPP->Reset(&m_mfxVideoParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Reset failed");
 
     sts = ReallocFrames(&oldMfxParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "ReallocFrames failed");
 
     if (m_bOutput)
     {
@@ -1372,7 +1284,7 @@ mfxStatus CCameraPipeline::Reset(sInputParams *pParams)
         } else {
             sts = m_pBmpWriter->Init(pParams->strDstFile, m_mfxVideoParams.vpp.Out.CropW, m_mfxVideoParams.vpp.Out.CropH, pParams->maxNumBmpFiles);
         }
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "<Out format>Writer->Init failed");
     }
 
     return MFX_ERR_NONE;

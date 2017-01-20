@@ -40,6 +40,14 @@ if( Windows )
   message( FATAL_ERROR "Windows is not currently supported!" )
 
 else( )
+
+  # If user did not override CMAKE_INSTALL_PREFIX, then set the default prefix
+  # to /opt/intel/mediasdk/samples instead of cmake's default
+  if( CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT )
+    set( CMAKE_INSTALL_PREFIX /opt/intel/mediasdk/samples CACHE PATH "Install Path Prefix" FORCE )
+  endif( )
+  message( STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}" )
+
   add_definitions(-DUNIX)
 
   if( Linux )
@@ -124,8 +132,12 @@ else( )
 
   if(__ARCH MATCHES ia32)
     link_directories(/usr/lib)
+    set( MFX_SAMPLES_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX} )
+    set( MFX_SAMPLES_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX} )
   else ( )
     link_directories(/usr/lib64)
+    set( MFX_SAMPLES_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX} )
+    set( MFX_SAMPLES_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX} )
   endif( )
 endif( )
 

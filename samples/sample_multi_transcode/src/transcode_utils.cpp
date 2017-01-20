@@ -105,9 +105,9 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("                Use greedy formula to calculate number of surfaces\n"));
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Pipeline description (general options):\n"));
-    msdk_printf(MSDK_STRING("  -i::h265|h264|mpeg2|vc1|mvc|jpeg|vp8 <file-name>\n"));
+    msdk_printf(MSDK_STRING("  -i::h265|h264|mpeg2|vc1|mvc|jpeg|vp9 <file-name>\n"));
     msdk_printf(MSDK_STRING("                Set input file and decoder type\n"));
-    msdk_printf(MSDK_STRING("  -o::h265|h264|mpeg2|mvc|jpeg|vp8|raw <file-name>\n"));
+    msdk_printf(MSDK_STRING("  -o::h265|h264|mpeg2|mvc|jpeg|raw <file-name>\n"));
     msdk_printf(MSDK_STRING("                Set output file and encoder type\n"));
     msdk_printf(MSDK_STRING("  -sw|-hw|-hw_d3d11\n"));
     msdk_printf(MSDK_STRING("                SDK implementation to use: \n"));
@@ -146,12 +146,24 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -la           Use the look ahead bitrate control algorithm (LA BRC) for H.264 encoder. Supported only with -hw option on 4th Generation Intel Core processors. \n"));
     msdk_printf(MSDK_STRING("  -lad depth    Depth parameter for the LA BRC, the number of frames to be analyzed before encoding. In range [10,100]. \n"));
     msdk_printf(MSDK_STRING("                May be 1 in the case when -mss option is specified \n"));
+    msdk_printf(MSDK_STRING("  -la_ext       Use external LA plugin (compatible with h264 & hevc encoders)\n"));
+    msdk_printf(MSDK_STRING("  -vbr          Variable bitrate control\n"));
     msdk_printf(MSDK_STRING("  -hrd <KB>     Maximum possible size of any compressed frames \n"));
     msdk_printf(MSDK_STRING("  -wb <KBps>    Maximum bitrate for sliding window \n"));
     msdk_printf(MSDK_STRING("  -ws           Sliding window size in frames\n"));
     msdk_printf(MSDK_STRING("  -gop_size     Size of GOP structure in frames \n"));
     msdk_printf(MSDK_STRING("  -dist         Distance between I- or P- key frames \n"));
     msdk_printf(MSDK_STRING("  -num_ref      Number of reference frames\n"));
+    msdk_printf(MSDK_STRING("  -bref         Arrange B frames in B pyramid reference structure\n"));
+    msdk_printf(MSDK_STRING("  -CodecProfile          - Specifies codec profile\n"));
+    msdk_printf(MSDK_STRING("  -CodecLevel            - Specifies codec level\n"));
+    msdk_printf(MSDK_STRING("  -GopOptFlag:closed     - Closed gop\n"));
+    msdk_printf(MSDK_STRING("  -GopOptFlag:strict     - Strict gop\n"));
+    msdk_printf(MSDK_STRING("  -InitialDelayInKB      - The decoder starts decoding after the buffer reaches the initial size InitialDelayInKB, \
+                            which is equivalent to reaching an initial delay of InitialDelayInKB*8000/TargetKbps ms\n"));
+    msdk_printf(MSDK_STRING("  -MaxKbps              - For variable bitrate control, specifies the maximum bitrate at which \
+                            the encoded data enters the Video Buffering Verifier buffer\n"));
+
     msdk_printf(MSDK_STRING("  -gpucopy::<on,off> Enable or disable GPU copy mode\n"));
     msdk_printf(MSDK_STRING("  -cqp          Constant quantization parameter (CQP BRC) bitrate control method\n"));
     msdk_printf(MSDK_STRING("                              (by default constant bitrate control method is used), should be used along with -qpi, -qpp, -qpb.\n"));
@@ -171,10 +183,10 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -FRC::PT      Enables FRC filter with Preserve Timestamp algorithm\n"));
     msdk_printf(MSDK_STRING("  -FRC::DT      Enables FRC filter with Distributed Timestamp algorithm\n"));
     msdk_printf(MSDK_STRING("  -FRC::INTERP  Enables FRC filter with Frame Interpolation algorithm\n"));
-    msdk_printf(MSDK_STRING("     NOTE: -FRC filters work with -i::source pipelines only !!!\n"));
+    msdk_printf(MSDK_STRING("     NOTE: -FRC filters do not work with -i::sink pipelines !!!\n"));
     msdk_printf(MSDK_STRING("  -ec::nv12|rgb4|yuy2|nv16|p010|p210   Forces encoder input to use provided chroma mode\n"));
     msdk_printf(MSDK_STRING("  -dc::nv12|rgb4|yuy2   Forces decoder output to use provided chroma mode\n"));
-    msdk_printf(MSDK_STRING("     NOTE: chroma transform VPP may be automatically enabled if -ec/-dc parameters are provided\n"));
+    msdk_printf(MSDK_STRING("     NOTE: chroma transform VPP may be automatically enabled if -ec/-dc parameters are provide d\n"));
     msdk_printf(MSDK_STRING("  -angle 180    Enables 180 degrees picture rotation user module before encoding\n"));
     msdk_printf(MSDK_STRING("  -opencl       Uses implementation of rotation plugin (enabled with -angle option) through Intel(R) OpenCL\n"));
     msdk_printf(MSDK_STRING("  -w            Destination picture width, invokes VPP resize\n"));
@@ -302,6 +314,13 @@ void CmdProcessor::PrintParFileName()
     }
 }
 
+msdk_string CmdProcessor::GetLine(mfxU32 n)
+{
+    if (m_lines.size() > n)
+        return m_lines[n];
+    return msdk_string();
+}
+
 mfxStatus CmdProcessor::ParseCmdLine(int argc, msdk_char *argv[])
 {
     FILE *parFile = NULL;
@@ -348,7 +367,7 @@ mfxStatus CmdProcessor::ParseCmdLine(int argc, msdk_char *argv[])
         else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-?")) )
         {
             PrintHelp();
-            return MFX_ERR_UNSUPPORTED;
+            return MFX_WRN_OUT_OF_RANGE;
         }
         else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-greedy")))
         {
@@ -483,9 +502,10 @@ mfxStatus CmdProcessor::ParseParFile(FILE *parFile)
             continue;
 
         sts = TokenizeLine(pCur, currPos);
-//        if (MFX_ERR_NONE != sts)
-//            PrintError(MSDK_STRING("Error in par file parameters at line %d"), lineIndex);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "TokenizeLine failed");
+
+        // save original cmd line for debug purposes
+        m_lines.push_back(msdk_string(pCur, currPos));
         currPos = 0;
         lineIndex++;
     }
@@ -540,8 +560,13 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
 {
     mfxStatus sts = MFX_ERR_NONE;
     mfxStatus stsExtBuf = MFX_ERR_NONE;
-    mfxU32 i, j;
     mfxU32 skipped = 0;
+
+    // save original cmd line for debug purpose
+    msdk_stringstream cmd;
+    for (mfxU32 i = 0; i <argc; i++)
+        cmd <<argv[i] << MSDK_STRING(" ");
+    m_lines.push_back(cmd.str());
 
     TranscodingSample::sInputParams InputParams;
     if (m_nTimeout)
@@ -565,7 +590,7 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
     InputParams.bUseOpaqueMemory = true;
     InputParams.eModeExt = Native;
 
-    for (i = 0; i < argc; i++)
+    for (mfxU32 i = 0; i < argc; i++)
     {
         // process multi-character options
         if ( (0 == msdk_strncmp(MSDK_STRING("-i::"), argv[i], msdk_strlen(MSDK_STRING("-i::"))))
@@ -588,7 +613,7 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                     case MFX_CODEC_HEVC:
                     case MFX_CODEC_AVC:
                     case MFX_CODEC_VC1:
-                    case MFX_CODEC_VP8:
+                    case MFX_CODEC_VP9:
                     case CODEC_MVC:
                     case MFX_CODEC_JPEG:
                         return MFX_ERR_UNSUPPORTED;
@@ -629,7 +654,6 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                     case MFX_CODEC_HEVC:
                     case MFX_CODEC_AVC:
                     case MFX_CODEC_JPEG:
-                    case MFX_CODEC_VP8:
                     case MFX_FOURCC_DUMP:
                         return MFX_ERR_UNSUPPORTED;
                 }
@@ -763,6 +787,58 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 PrintError(MSDK_STRING("Number of reference frames \"%s\" is invalid"), argv[i]);
                 return MFX_ERR_UNSUPPORTED;
             }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-CodecLevel")))
+        {
+            VAL_CHECK(i + 1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.CodecLevel))
+            {
+                PrintError(MSDK_STRING("CodecLevel \"%s\" is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-CodecProfile")))
+        {
+            VAL_CHECK(i + 1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.CodecProfile))
+            {
+                PrintError(MSDK_STRING("CodecProfile \"%s\" is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-MaxKbps")))
+        {
+            VAL_CHECK(i + 1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.MaxKbps))
+            {
+                PrintError(MSDK_STRING("MaxKbps \"%s\" is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-InitialDelayInKB")))
+        {
+            VAL_CHECK(i + 1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.InitialDelayInKB))
+            {
+                PrintError(MSDK_STRING("InitialDelayInKB \"%s\" is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-GopOptFlag:closed")))
+        {
+            InputParams.GopOptFlag = MFX_GOP_CLOSED;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-GopOptFlag:strict")))
+        {
+            InputParams.GopOptFlag = MFX_GOP_STRICT;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-bref")))
+        {
+            InputParams.nBRefType = MFX_B_REF_PYRAMID;
         }
         else if(0 == msdk_strcmp(argv[i], MSDK_STRING("-u")))
         {
@@ -904,7 +980,7 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 InputParams.eModeExt = VppCompOnly;
 
             bool bOpaqueFlagChanged = false;
-            for (j = 0; j < m_SessionArray.size(); j++)
+            for (mfxU32 j = 0; j < m_SessionArray.size(); j++)
             {
                 if (m_SessionArray[j].bUseOpaqueMemory)
                 {
@@ -1063,6 +1139,10 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
             InputParams.bLABRC = true;
             InputParams.nRateControlMethod = MFX_RATECONTROL_LA;
         }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-vbr")))
+        {
+            InputParams.nRateControlMethod = MFX_RATECONTROL_VBR;
+        }
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-bpyr")))
         {
             InputParams.bEnableBPyramid = true;
@@ -1163,7 +1243,7 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
     if (skipped < argc)
     {
         sts = VerifyAndCorrectInputParams(InputParams);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "VerifyAndCorrectInputParams failed");
         m_SessionArray.push_back(InputParams);
     }
 
@@ -1257,7 +1337,7 @@ mfxStatus CmdProcessor::VerifyAndCorrectInputParams(TranscodingSample::sInputPar
 
     if (MFX_CODEC_JPEG != InputParams.EncodeId && MFX_CODEC_MPEG2 != InputParams.EncodeId &&
         MFX_CODEC_AVC != InputParams.EncodeId && MFX_CODEC_HEVC != InputParams.EncodeId &&
-        MFX_CODEC_VP8 != InputParams.EncodeId && MFX_FOURCC_DUMP != InputParams.EncodeId &&
+        MFX_CODEC_VP9 != InputParams.EncodeId && MFX_FOURCC_DUMP != InputParams.EncodeId &&
         InputParams.eMode != Sink && InputParams.eModeExt != VppCompOnly)
     {
         PrintError(MSDK_STRING("Unknown encoder\n"));
@@ -1269,7 +1349,7 @@ mfxStatus CmdProcessor::VerifyAndCorrectInputParams(TranscodingSample::sInputPar
        MFX_CODEC_HEVC != InputParams.DecodeId &&
        MFX_CODEC_VC1 != InputParams.DecodeId &&
        MFX_CODEC_JPEG != InputParams.DecodeId &&
-       MFX_CODEC_VP8 != InputParams.DecodeId &&
+       MFX_CODEC_VP9 != InputParams.DecodeId &&
        InputParams.eMode != Source)
     {
         PrintError(MSDK_STRING("Unknown decoder\n"));
@@ -1445,20 +1525,3 @@ bool  CmdProcessor::GetNextSessionParams(TranscodingSample::sInputParams &InputP
 
 } //bool  CmdProcessor::GetNextSessionParams(TranscodingSample::sInputParams &InputParams)
 
-mfxU16 TranscodingSample::FourCCToChroma(mfxU32 fourCC)
-{
-    switch(fourCC)
-    {
-    case MFX_FOURCC_NV12:
-    case MFX_FOURCC_P010:
-        return MFX_CHROMAFORMAT_YUV420;
-    case MFX_FOURCC_NV16:
-    case MFX_FOURCC_P210:
-    case MFX_FOURCC_YUY2:
-        return MFX_CHROMAFORMAT_YUV422;
-    case MFX_FOURCC_RGB4:
-        return MFX_CHROMAFORMAT_YUV444;
-    }
-
-    return MFX_CHROMAFORMAT_YUV420;
-}

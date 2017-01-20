@@ -149,7 +149,7 @@ mfxStatus InitSurfaces(sMemoryAllocator* pAllocator, mfxFrameAllocRequest* pRequ
   mfxU16    nFrames, i;
 
   sts = pAllocator->pMfxAllocator->Alloc(pAllocator->pMfxAllocator->pthis, pRequest, pAllocator->response);
-  MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+  MSDK_CHECK_STATUS(sts, "pAllocator->pMfxAllocator->Alloc failed");
 
   nFrames = pAllocator->response->NumFrameActual;
   *(pAllocator->pSurfaces) = new mfxFrameSurface1 [nFrames];
@@ -168,7 +168,7 @@ mfxStatus InitSurfaces(sMemoryAllocator* pAllocator, mfxFrameAllocRequest* pRequ
       sts = pAllocator->pMfxAllocator->Lock(pAllocator->pMfxAllocator->pthis,
                                             pAllocator->response->mids[i],
                                             &(pAllocator->pSurfaces[0][i].Data));
-      MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+      MSDK_CHECK_STATUS(sts, "pAllocator->pMfxAllocator->Lock failed");
     }
   }
 
@@ -319,6 +319,9 @@ CRawVideoReader::CRawVideoReader()
 {
     m_fSrc = 0;
     m_bSingleFileMode = false;
+    m_Height = m_Width = 0;
+    m_FileNum = 0;
+    m_DoPadding = false;
 #ifdef CONVERT_TO_LSB
     m_pPaddingBuffer = 0;
 #endif
@@ -707,6 +710,12 @@ mfxStatus CBmpWriter::WriteFrame(mfxFrameData* pData, const msdk_char *fileId, m
 
 
 /* ******************************************************************* */
+CRawVideoWriter::CRawVideoWriter() :
+    m_FileNum(0)
+    , m_maxNumFilesToCreate(0)
+{
+    MSDK_ZERO_MEMORY(m_FileNameBase);
+}
 
 mfxStatus CRawVideoWriter::Init(sInputParams* pParams)
 {
@@ -781,9 +790,7 @@ mfxStatus CRawVideoWriter::WriteFrame(mfxFrameData* pData, const msdk_char *file
 
         if (fwrite(ptr + i*pitch, sizeof(mfxU16), 4*w, f) != (4*w))
         {
-            MSDK_PRINT_RET_MSG(MFX_ERR_UNDEFINED_BEHAVIOR);
-            fclose(f);
-            return MFX_ERR_UNDEFINED_BEHAVIOR;
+            MSDK_CHECK_STATUS_SAFE(MFX_ERR_UNDEFINED_BEHAVIOR, "fwrite failed", fclose(f));
         }
     }
 #else

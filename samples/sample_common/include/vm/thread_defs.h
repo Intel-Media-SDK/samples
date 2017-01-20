@@ -94,7 +94,9 @@ struct msdkThreadHandle
         msdk_thread_callback func,
         void* arg):
       m_func(func),
-      m_arg(arg)
+      m_arg(arg),
+      m_event(0),
+      m_thread(0)
     {}
 
     msdk_thread_callback m_func;

@@ -391,14 +391,9 @@ mfxStatus vaapiFrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
     }
     else   // Image processing
     {
-        va_res = m_libva->vaSyncSurface(m_dpy, *(vaapi_mid->m_surface));
+        va_res = m_libva->vaDeriveImage(m_dpy, *(vaapi_mid->m_surface), &(vaapi_mid->m_image));
         mfx_res = va_to_mfx_status(va_res);
 
-        if (MFX_ERR_NONE == mfx_res)
-        {
-        va_res = m_libva->vaDeriveImage(m_dpy, *(vaapi_mid->m_surface), &(vaapi_mid->m_image));
-            mfx_res = va_to_mfx_status(va_res);
-        }
         if (MFX_ERR_NONE == mfx_res)
         {
             va_res = m_libva->vaMapBuffer(m_dpy, vaapi_mid->m_image.buf, (void **) &pBuffer);

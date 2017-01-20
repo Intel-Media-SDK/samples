@@ -36,6 +36,11 @@ using namespace TranscodingSample;
 
 CVPPExtBuffersStorage::CVPPExtBuffersStorage(void)
 {
+    MSDK_ZERO_MEMORY(denoiseFilter);
+    MSDK_ZERO_MEMORY(detailFilter);
+    MSDK_ZERO_MEMORY(frcFilter);
+    MSDK_ZERO_MEMORY(deinterlaceFilter);
+    MSDK_ZERO_MEMORY(vppFieldProcessingFilter);
 }
 
 

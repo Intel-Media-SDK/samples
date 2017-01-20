@@ -94,6 +94,14 @@ static
         return MSDK_STRING("A2RGB10");
     case MFX_FOURCC_UYVY:
         return MSDK_STRING("UYVY");
+    case MFX_FOURCC_AYUV:
+        return MSDK_STRING("AYUV");
+#ifdef FUTURE_API
+    case MFX_FOURCC_Y210:
+        return MSDK_STRING("Y210");
+    case MFX_FOURCC_Y410:
+        return MSDK_STRING("Y410");
+#endif
     default:
         return MSDK_STRING("Unknown");
     }
@@ -386,7 +394,7 @@ mfxStatus InitParamsVPP(mfxVideoParam* pParams, sInputParams* pInParams, mfxU32 
 mfxStatus CreateFrameProcessor(sFrameProcessor* pProcessor, mfxVideoParam* pParams, sInputParams* pInParams)
 {
     mfxStatus  sts = MFX_ERR_NONE;
-    mfxVersion version = {MFX_VERSION_MINOR, MFX_VERSION_MAJOR};
+    mfxVersion version = {10, 1};
     mfxIMPL    impl    = pInParams->ImpLib;
 
     MSDK_CHECK_POINTER(pProcessor, MFX_ERR_NULL_PTR);
@@ -407,7 +415,7 @@ mfxStatus CreateFrameProcessor(sFrameProcessor* pProcessor, mfxVideoParam* pPara
         initParams.NumExtParam     = 0;
         sts = pProcessor->mfxSession.InitEx(initParams);
     }
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Failed to Init mfx session\n"));  WipeFrameProcessor(pProcessor);});
+    MSDK_CHECK_STATUS_SAFE(sts, "pProcessor->mfxSession.Init failed", {WipeFrameProcessor(pProcessor);});
 
     // Plug-in
     if ( pInParams->need_plugin )
@@ -445,7 +453,7 @@ mfxStatus InitFrameProcessor(sFrameProcessor* pProcessor, mfxVideoParam* pParams
     // close VPP in case it was initialized
     sts = pProcessor->pmfxVPP->Close();
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_INITIALIZED);
-    MSDK_CHECK_RESULT(sts,   MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "pProcessor->pmfxVPP->Close failed");
 
 
     // init VPP
@@ -468,7 +476,7 @@ mfxStatus InitSurfaces(
     mfxFrameSurface1*& pSurfaces = isInput ? pAllocator->pSurfacesIn[streamIndex] : pAllocator->pSurfacesOut;
 
     sts = pAllocator->pMfxAllocator->Alloc(pAllocator->pMfxAllocator->pthis, pRequest, &response);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Failed to Alloc frames\n"));  WipeMemoryAllocator(pAllocator);});
+    MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pMfxAllocator->Alloc failed", {WipeMemoryAllocator(pAllocator);});
 
     nFrames = response.NumFrameActual;
     pSurfaces = new mfxFrameSurface1 [nFrames];
@@ -504,9 +512,6 @@ mfxStatus InitMemoryAllocator(
 
     MSDK_ZERO_MEMORY(request);
 
-    // VppRequest[0] for input frames request, VppRequest[1] for output frames request
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
-
     pAllocator->pMfxAllocator =  new GeneralAllocator;
 
     bool isHWLib       = (MFX_IMPL_HARDWARE & pInParams->ImpLib) ? true : false;
@@ -519,13 +524,13 @@ mfxStatus InitMemoryAllocator(
             // prepare device manager
             pAllocator->pDevice = new CD3D9Device();
             sts = pAllocator->pDevice->Init(0, 1, MSDKAdapter::GetNumber(pProcessor->mfxSession));
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->Init failed", WipeMemoryAllocator(pAllocator));
 
             mfxHDL hdl = 0;
             sts = pAllocator->pDevice->GetHandle(MFX_HANDLE_D3D9_DEVICE_MANAGER, &hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->GetHandle failed", WipeMemoryAllocator(pAllocator));
             sts = pProcessor->mfxSession.SetHandle(MFX_HANDLE_D3D9_DEVICE_MANAGER, hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->SetHandle failed", WipeMemoryAllocator(pAllocator));
 
             // prepare allocator
             D3DAllocatorParams *pd3dAllocParams = new D3DAllocatorParams;
@@ -540,13 +545,13 @@ mfxStatus InitMemoryAllocator(
             pAllocator->pDevice = new CD3D11Device();
 
             sts = pAllocator->pDevice->Init(0, 1, MSDKAdapter::GetNumber(pProcessor->mfxSession));
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->Init failed", WipeMemoryAllocator(pAllocator));
 
             mfxHDL hdl = 0;
             sts = pAllocator->pDevice->GetHandle(MFX_HANDLE_D3D11_DEVICE, &hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->GetHandle failed", WipeMemoryAllocator(pAllocator));
             sts = pProcessor->mfxSession.SetHandle(MFX_HANDLE_D3D11_DEVICE, hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->SetHandle failed", WipeMemoryAllocator(pAllocator));
 
             // prepare allocator
             D3D11AllocatorParams *pd3d11AllocParams = new D3D11AllocatorParams;
@@ -562,13 +567,13 @@ mfxStatus InitMemoryAllocator(
             MSDK_CHECK_POINTER(pAllocator->pDevice, MFX_ERR_NULL_PTR);
 
             sts = pAllocator->pDevice->Init(0, 1, MSDKAdapter::GetNumber(pProcessor->mfxSession));
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->Init failed", WipeMemoryAllocator(pAllocator));
 
             mfxHDL hdl = 0;
             sts = pAllocator->pDevice->GetHandle(MFX_HANDLE_VA_DISPLAY, &hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->GetHandle failed", WipeMemoryAllocator(pAllocator));
             sts = pProcessor->mfxSession.SetHandle(MFX_HANDLE_VA_DISPLAY, hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->SetHandle failed", WipeMemoryAllocator(pAllocator));
 
             // prepare allocator
             vaapiAllocatorParams *pVaapiAllocParams = new vaapiAllocatorParams;
@@ -590,32 +595,36 @@ mfxStatus InitMemoryAllocator(
         {
             pAllocator->pDevice = CreateVAAPIDevice();
             if (!pAllocator->pDevice) sts = MFX_ERR_MEMORY_ALLOC;
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice creation failed", WipeMemoryAllocator(pAllocator));
 
             mfxHDL hdl = 0;
             sts = pAllocator->pDevice->GetHandle(MFX_HANDLE_VA_DISPLAY, &hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->GetHandle failed", WipeMemoryAllocator(pAllocator));
 
             sts = pProcessor->mfxSession.SetHandle(MFX_HANDLE_VA_DISPLAY, hdl);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pDevice->SetHandle failed", WipeMemoryAllocator(pAllocator));
         }
 #endif
 
     }
     /* This sample uses external memory allocator model for both system and HW memory */
     sts = pProcessor->mfxSession.SetFrameAllocator(pAllocator->pMfxAllocator);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+    MSDK_CHECK_STATUS_SAFE(sts, "pProcessor->mfxSession.SetFrameAllocator failed", WipeMemoryAllocator(pAllocator));
     pAllocator->bUsedAsExternalAllocator = true;
 
     sts = pAllocator->pMfxAllocator->Init(pAllocator->pAllocatorParams);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+    MSDK_CHECK_STATUS_SAFE(sts, "pAllocator->pMfxAllocator->Init failed", WipeMemoryAllocator(pAllocator));
 
-    sts = pProcessor->pmfxVPP->Query(pParams, pParams);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+    mfxVideoParam tmpParam={0};
+    tmpParam.ExtParam = pParams->ExtParam;
+    tmpParam.NumExtParam = pParams->NumExtParam;
+    sts = pProcessor->pmfxVPP->Query(pParams, &tmpParam);
+    *pParams=tmpParam;
+    MSDK_CHECK_STATUS_SAFE(sts, "pProcessor->pmfxVPP->Query failed", WipeMemoryAllocator(pAllocator));
 
     sts = pProcessor->pmfxVPP->QueryIOSurf(pParams, request);
     MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+    MSDK_CHECK_STATUS_SAFE(sts, "pProcessor->pmfxVPP->QueryIOSurf failed", WipeMemoryAllocator(pAllocator));
 
     // alloc frames for vpp
     // [IN]
@@ -624,7 +633,7 @@ mfxStatus InitMemoryAllocator(
     if(pInParams->compositionParam.mode != VPP_FILTER_ENABLED_CONFIGURED)
     {
         sts = InitSurfaces(pAllocator, &(request[VPP_IN]),true,0);
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+       MSDK_CHECK_STATUS_SAFE(sts, "InitSurfaces failed", WipeMemoryAllocator(pAllocator));
     }
     else
     {
@@ -634,13 +643,13 @@ mfxStatus InitMemoryAllocator(
             request[VPP_IN].NumFrameSuggested = 1;
             request[VPP_IN].NumFrameMin = request[VPP_IN].NumFrameSuggested;
             sts = InitSurfaces(pAllocator, &(request[VPP_IN]),true,i);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+            MSDK_CHECK_STATUS_SAFE(sts, "InitSurfaces failed", WipeMemoryAllocator(pAllocator));
         }
     }
 
     // [OUT]
     sts = InitSurfaces(pAllocator, &(request[VPP_OUT]), false,0);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, WipeMemoryAllocator(pAllocator));
+    MSDK_CHECK_STATUS_SAFE(sts, "InitSurfaces failed", WipeMemoryAllocator(pAllocator));
 
     return MFX_ERR_NONE;
 
@@ -655,10 +664,10 @@ mfxStatus InitResources(sAppResources* pResources, mfxVideoParam* pParams, sInpu
     MSDK_CHECK_POINTER(pResources, MFX_ERR_NULL_PTR);
     MSDK_CHECK_POINTER(pParams,    MFX_ERR_NULL_PTR);
     sts = CreateFrameProcessor(pResources->pProcessor, pParams, pInParams);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Failed to CreateFrameProcessor\n")); WipeResources(pResources); WipeParams(pInParams);});
+    MSDK_CHECK_STATUS_SAFE(sts, "CreateFrameProcessor failed", { WipeResources(pResources); WipeParams(pInParams);});
 
     sts = InitMemoryAllocator(pResources->pProcessor, pResources->pAllocator, pParams, pInParams);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Failed to InitMemoryAllocator\n")); WipeResources(pResources); WipeParams(pInParams);});
+    MSDK_CHECK_STATUS_SAFE(sts, "InitMemoryAllocator failed", { WipeResources(pResources); WipeParams(pInParams);});
 
     sts = InitFrameProcessor(pResources->pProcessor, pParams);
 
@@ -666,7 +675,7 @@ mfxStatus InitResources(sAppResources* pResources, mfxVideoParam* pParams, sInpu
         return sts;
     else
     {
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Failed to InitFrameProcessor\n")); WipeResources(pResources); WipeParams(pInParams);});
+        MSDK_CHECK_STATUS_SAFE(sts, "InitFrameProcessor failed", { WipeResources(pResources); WipeParams(pInParams);});
     }
 
     return sts;
@@ -759,6 +768,7 @@ void WipeResources(sAppResources* pResources)
             pResources->pSrcFileReaders[i]->Close();
         }
     }
+    pResources->numSrcFiles=0;
 
     if (pResources->pDstFileWriters)
     {
@@ -768,12 +778,13 @@ void WipeResources(sAppResources* pResources)
         }
         delete[] pResources->pDstFileWriters;
         pResources->dstFileWritersN = 0;
-        pResources->pDstFileWriters = 0;
+        pResources->pDstFileWriters = NULL;
     }
 
     if(pResources->compositeConfig.InputStream)
     {
         delete[] pResources->compositeConfig.InputStream;
+        pResources->compositeConfig.InputStream=NULL;
     }
 
     WipeConfigParam( pResources );
@@ -1158,6 +1169,39 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
     }
+    else if (pInfo->FourCC == MFX_FOURCC_AYUV)
+    {
+        ptr = std::min( std::min(pData->Y, pData->U), std::min(pData->V, pData->A) );
+        ptr = ptr + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
+            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+        }
+    }
+#ifdef FUTURE_API
+    else if (pInfo->FourCC == MFX_FOURCC_Y210)
+    {
+        ptr = (mfxU8*)pData->Y16 + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
+            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+        }
+    }
+    else if (pInfo->FourCC == MFX_FOURCC_Y410)
+    {
+        ptr = (mfxU8*)pData->Y410 + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
+            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+        }
+    }
+#endif
     else
     {
         return MFX_ERR_UNSUPPORTED;
@@ -1173,7 +1217,7 @@ mfxStatus CRawVideoReader::GetNextInputFrame(sMemoryAllocator* pAllocator, mfxFr
     if (!m_isPerfMode)
     {
         sts = GetFreeSurface(pAllocator->pSurfacesIn[streamIndex], pAllocator->responseIn[streamIndex].NumFrameActual, pSurface);
-        MSDK_CHECK_RESULT_SAFE(sts,MFX_ERR_NONE,sts,msdk_printf(MSDK_STRING("Cannot find free surface")));
+        MSDK_CHECK_STATUS(sts,"GetFreeSurface failed");
 
         mfxFrameSurface1* pCurSurf = *pSurface;
         if (pCurSurf->Data.MemId || pAllocator->bUsedAsExternalAllocator)
@@ -1267,7 +1311,7 @@ CRawVideoWriter::CRawVideoWriter()
 {
     m_fDst = 0;
     m_pPTSMaker = 0;
-
+    m_outYV12 = false;
     return;
 }
 
@@ -1675,6 +1719,36 @@ mfxStatus CRawVideoWriter::WriteFrame(
             MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
+    else if (pInfo->FourCC == MFX_FOURCC_AYUV)
+    {
+        ptr = std::min( std::min(pData->Y, pData->U), std::min(pData->V, pData->A) );
+        ptr = ptr + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
+        }
+    }
+#ifdef FUTURE_API
+    else if( pInfo->FourCC == MFX_FOURCC_Y210)
+    {
+        ptr = pData->Y + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
+        }
+    }
+    else if (pInfo->FourCC == MFX_FOURCC_Y410)
+    {
+        ptr = (mfxU8*)pData->Y410 + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
+        }
+    }
+#endif
     else
     {
         return MFX_ERR_UNSUPPORTED;
@@ -1685,7 +1759,8 @@ mfxStatus CRawVideoWriter::WriteFrame(
 
 /* ******************************************************************* */
 
-GeneralWriter::GeneralWriter()
+GeneralWriter::GeneralWriter() :
+    m_svcMode(false)
 {
 };
 

@@ -58,7 +58,9 @@ CCameraD3DRender::CCameraD3DRender()
     MSDK_ZERO_MEMORY(m_sWindowParams);
     m_Hwnd = 0;
     MSDK_ZERO_MEMORY(m_rect);
+    MSDK_ZERO_MEMORY(m_RectWindow);
     m_style = 0;
+    MSDK_ZERO_MEMORY(m_RectWindow);
 }
 
 BOOL CALLBACK CCameraD3DRender::MonitorEnumProc(HMONITOR /*hMonitor*/,
@@ -176,7 +178,7 @@ mfxStatus CCameraD3DRender::RenderFrame(mfxFrameSurface1 *pSurface, mfxFrameAllo
     //EnableDwmQueuing();
 
     mfxStatus sts = m_hwdev->RenderFrame(pSurface, pmfxAlloc);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_hwdev->RenderFrame failed");
 
     if (NULL != m_sWindowParams.lpWindowName)
     {

@@ -7,3 +7,5 @@ list( APPEND LIBS_VARIANT sample_common )
 
 set(DEPENDENCIES libmfx dl pthread)
 make_executable( shortname universal )
+
+install( TARGETS ${target} RUNTIME DESTINATION ${MFX_SAMPLES_INSTALL_BIN_DIR} )

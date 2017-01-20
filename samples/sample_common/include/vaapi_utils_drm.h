@@ -83,6 +83,7 @@ private:
     drmModeCrtcPtr m_crtc;
     drm_intel_bufmgr* m_bufmgr;
     bool m_overlay_wrn;
+    mfxFrameSurface1 * m_pCurrentRenderTargetSurface;
 
 private:
     DISALLOW_COPY_AND_ASSIGN(drmRenderer);

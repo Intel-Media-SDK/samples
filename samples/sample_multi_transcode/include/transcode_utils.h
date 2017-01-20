@@ -58,9 +58,6 @@ namespace TranscodingSample
 
     bool PrintDllInfo(msdk_char *buf, mfxU32 buf_size, sInputParams* pParams);
 
-    mfxU16 FourCCToChroma(mfxU32 fourCC);
-
-
     template <class T, bool isSingle>
     class s_ptr
     {
@@ -106,6 +103,7 @@ namespace TranscodingSample
         bool GetNextSessionParams(TranscodingSample::sInputParams &InputParams);
         FILE*     GetPerformanceFile() {return m_PerfFILE;};
         void      PrintParFileName();
+        msdk_string GetLine(mfxU32 n);
     protected:
         mfxStatus ParseParFile(FILE* file);
         mfxStatus TokenizeLine(msdk_char *pLine, mfxU32 length);
@@ -122,6 +120,7 @@ namespace TranscodingSample
         mfxU32                                       statisticsWindowSize;
         mfxU32                                       m_nTimeout;
         bool                                         shouldUseGreedyFormula;
+        std::vector<msdk_string>                     m_lines;
     private:
         DISALLOW_COPY_AND_ASSIGN(CmdProcessor);
 

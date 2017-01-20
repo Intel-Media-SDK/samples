@@ -62,11 +62,12 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Supported codecs, <msdk-codecid>:\n"));
     msdk_printf(MSDK_STRING("   <codecid>=h264|mpeg2|vc1|mvc|jpeg - built-in Media SDK codecs\n"));
-    msdk_printf(MSDK_STRING("   <codecid>=h265|vp8                - in-box Media SDK plugins (may require separate downloading and installation)\n"));
+    msdk_printf(MSDK_STRING("   <codecid>=h265                - in-box Media SDK plugins (may require separate downloading and installation)\n"));
     msdk_printf(MSDK_STRING("   If codecid is jpeg, -q option is mandatory.)\n"));
     msdk_printf(MSDK_STRING("Options: \n"));
     MOD_ENC_PRINT_HELP;
-    msdk_printf(MSDK_STRING("   [-nv12|yuy2] - input is in NV12 color format, if not specified YUV420 is expected. YUY2 are for JPEG encode only\n"));
+    msdk_printf(MSDK_STRING("   [-nv12|yuy2|p010|rgb4] - input color format (by default YUV420 is expected). YUY2 is for JPEG encode only\n"));
+    msdk_printf(MSDK_STRING("   [-ec::p010] - force P010 surfaces for encoder. Use for 10 bit HEVC encoding\n"));
     msdk_printf(MSDK_STRING("   [-tff|bff] - input stream is interlaced, top|bottom fielf first, if not specified progressive is expected\n"));
     msdk_printf(MSDK_STRING("   [-bref] - arrange B frames in B pyramid reference structure\n"));
     msdk_printf(MSDK_STRING("   [-nobref] -  do not use B-pyramid (by default the decision is made by library)\n"));
@@ -92,16 +93,31 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-path path] - path to plugin (valid only in pair with -p option)\n"));
     msdk_printf(MSDK_STRING("   [-async]                 - depth of asynchronous pipeline. default value is 4. must be between 1 and 20.\n"));
     msdk_printf(MSDK_STRING("   [-gpucopy::<on,off>] Enable or disable GPU copy mode\n"));
+    msdk_printf(MSDK_STRING("   [-vbr]                   - variable bitrate control\n"));
     msdk_printf(MSDK_STRING("   [-cqp]                   - constant quantization parameter (CQP BRC) bitrate control method\n"));
     msdk_printf(MSDK_STRING("                              (by default constant bitrate control method is used), should be used along with -qpi, -qpp, -qpb.\n"));
     msdk_printf(MSDK_STRING("   [-qpi]                   - constant quantizer for I frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("   [-qpp]                   - constant quantizer for P frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("   [-qpb]                   - constant quantizer for B frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("   [-qsv-ff]       Enable QSV-FF mode\n"));
+    msdk_printf(MSDK_STRING("   [-gpb:<on,off>]          - Turn this option OFF to make HEVC encoder use regular P-frames instead of GPB\n"));
     msdk_printf(MSDK_STRING("   [-num_slice]             - number of slices in each video frame. 0 by default.\n"));
     msdk_printf(MSDK_STRING("                              If num_slice equals zero, the encoder may choose any slice partitioning allowed by the codec standard.\n"));
     msdk_printf(MSDK_STRING("   [-mss]                   - maximum slice size in bytes. Supported only with -hw and h264 codec. This option is not compatible with -num_slice option.\n"));
     msdk_printf(MSDK_STRING("   [-re]                    - enable region encode mode. Works only with h265 encoder\n"));
+    msdk_printf(MSDK_STRING("   [-CodecProfile]          - specifies codec profile\n"));
+    msdk_printf(MSDK_STRING("   [-CodecLevel]            - specifies codec level\n"));
+    msdk_printf(MSDK_STRING("   [-GopOptFlag:closed]     - closed gop\n"));
+    msdk_printf(MSDK_STRING("   [-GopOptFlag:strict]     - strict gop\n"));
+    msdk_printf(MSDK_STRING("   [-InitialDelayInKB]      - the decoder starts decoding after the buffer reaches the initial size InitialDelayInKB, \
+                            which is equivalent to reaching an initial delay of InitialDelayInKB*8000/TargetKbps ms\n"));
+    msdk_printf(MSDK_STRING("   [-BufferSizeInKB ]       - represents the maximum possible size of any compressed frames\n"));
+    msdk_printf(MSDK_STRING("   [-MaxKbps ]              - for variable bitrate control, specifies the maximum bitrate at which \
+                            the encoded data enters the Video Buffering Verifier buffer\n"));
+    msdk_printf(MSDK_STRING("   [-timeout]               - encoding in cycle not less than specific time in seconds\n"));
+    msdk_printf(MSDK_STRING("   [-membuf]                - size of memory buffer in frames\n"));
+    msdk_printf(MSDK_STRING("   [-uncut]                 - do not cut output file in looped mode (in case of -timeout option)\n"));
+
     msdk_printf(MSDK_STRING("Example: %s h265 -i InputYUVFile -o OutputEncodedFile -w width -h height -hw -p 2fca99749fdb49aeb121a5b63ef568f7\n"), strAppName);
 #if D3D_SURFACES_SUPPORT
     msdk_printf(MSDK_STRING("   [-d3d] - work with d3d surfaces\n"));
@@ -152,6 +168,8 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     pParams->bUseHWLib = true;
     pParams->isV4L2InputEnabled = false;
     pParams->nNumFrames = 0;
+    pParams->FileInputFourCC = MFX_FOURCC_YV12;
+    pParams->EncodeFourCC = MFX_FOURCC_NV12;
 #if defined (ENABLE_V4L2_SUPPORT)
     pParams->MipiPort = -1;
     pParams->MipiMode = NONE;
@@ -216,11 +234,25 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
 #if defined (ENABLE_V4L2_SUPPORT)
             pParams->v4l2Format = YUY2;
 #endif
-            pParams->ColorFormat = MFX_FOURCC_YUY2;
+            pParams->FileInputFourCC = MFX_FOURCC_YUY2;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-nv12")))
         {
-            pParams->ColorFormat = MFX_FOURCC_NV12;
+            pParams->FileInputFourCC = MFX_FOURCC_NV12;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-rgb4")))
+        {
+            pParams->FileInputFourCC = MFX_FOURCC_RGB4;
+            pParams->EncodeFourCC = MFX_FOURCC_RGB4;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-p010")))
+        {
+            pParams->FileInputFourCC = MFX_FOURCC_P010;
+            pParams->EncodeFourCC = MFX_FOURCC_P010;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-ec::p010")))
+        {
+            pParams->EncodeFourCC = MFX_FOURCC_P010;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-tff")))
         {
@@ -283,6 +315,10 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-vbr")))
+        {
+            pParams->nRateControlMethod = MFX_RATECONTROL_VBR;
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-mss")))
         {
             VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
@@ -317,6 +353,83 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 PrintHelp(strInput[0], MSDK_STRING("Async Depth is invalid"));
                 return MFX_ERR_UNSUPPORTED;
             }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-CodecLevel")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->CodecLevel))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("CodecLevel is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-CodecProfile")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->CodecProfile))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("CodecProfile is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-GopOptFlag:closed")))
+        {
+            pParams->GopOptFlag = MFX_GOP_CLOSED;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-GopOptFlag:strict")))
+        {
+            pParams->GopOptFlag = MFX_GOP_STRICT;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-InitialDelayInKB")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->InitialDelayInKB))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("InitialDelayInKB is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-MaxKbps")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->MaxKbps))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("MaxKbps is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-BufferSizeInKB")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->BufferSizeInKB))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("BufferSizeInKB is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-timeout")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->nTimeout))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Timeout is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-membuf")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->nMemBuf))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("membuf is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-uncut")))
+        {
+            pParams->bUncut = true;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-gpucopy::on")))
         {
@@ -356,6 +469,14 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 PrintHelp(strInput[0], MSDK_STRING("Quantizer for B frames is invalid"));
                 return MFX_ERR_UNSUPPORTED;
             }
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-gpb:on")))
+        {
+            pParams->nGPB = MFX_CODINGOPTION_ON;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-gpb:off")))
+        {
+            pParams->nGPB = MFX_CODINGOPTION_OFF;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-qsv-ff")))
         {
@@ -548,11 +669,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 break;
             case MSDK_CHAR('i'):
                 if (++i < nArgNum) {
-                    msdk_opt_read(strInput[i], pParams->strSrcFile);
-                    if (MVC_ENABLED & pParams->MVC_flags)
-                    {
-                        pParams->srcFileBuff.push_back(strInput[i]);
-                    }
+                    pParams->InputFiles.push_back(msdk_string(strInput[i]));
                 }
                 else {
                     msdk_printf(MSDK_STRING("error: option '-i' expects an argument\n"));
@@ -582,7 +699,10 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 if (++i < nArgNum) {
                     if (MFX_ERR_NONE == ConvertStringToGuid(strInput[i], pParams->pluginParams.pluginGuid))
                     {
-                        pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_GUID;
+                        if(pParams->pluginParams.type != MFX_PLUGINLOAD_TYPE_FILE)
+                        {
+                            pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_GUID;
+                        }
                     }
                     else
                     {
@@ -627,17 +747,12 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
 #endif
 
     // check if all mandatory parameters were set
-    if (0 == msdk_strlen(pParams->strSrcFile) && !pParams->isV4L2InputEnabled)
+    if (!pParams->InputFiles.size() && !pParams->isV4L2InputEnabled)
     {
         PrintHelp(strInput[0], MSDK_STRING("Source file name not found"));
         return MFX_ERR_UNSUPPORTED;
     };
 
-    if (pParams->dstFileBuff.empty())
-    {
-        PrintHelp(strInput[0], MSDK_STRING("Destination file name not found"));
-        return MFX_ERR_UNSUPPORTED;
-    };
 
     if (0 == pParams->nWidth || 0 == pParams->nHeight)
     {
@@ -648,7 +763,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     if (MFX_CODEC_MPEG2 != pParams->CodecId &&
         MFX_CODEC_AVC != pParams->CodecId &&
         MFX_CODEC_JPEG != pParams->CodecId &&
-        MFX_CODEC_VP8 != pParams->CodecId &&
         MFX_CODEC_HEVC != pParams->CodecId)
     {
         PrintHelp(strInput[0], MSDK_STRING("Unknown codec"));
@@ -656,10 +770,16 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     }
 
     if (MFX_CODEC_JPEG != pParams->CodecId &&
-        pParams->ColorFormat == MFX_FOURCC_YUY2 &&
+        pParams->FileInputFourCC == MFX_FOURCC_YUY2 &&
         !pParams->isV4L2InputEnabled)
     {
         PrintHelp(strInput[0], MSDK_STRING("-yuy2 option is supported only for JPEG encoder"));
+        return MFX_ERR_UNSUPPORTED;
+    }
+
+    if (MFX_CODEC_HEVC != pParams->CodecId && (pParams->EncodeFourCC == MFX_FOURCC_P010) )
+    {
+        PrintHelp(strInput[0], MSDK_STRING("P010 surfaces are supported only for HEVC encoder"));
         return MFX_ERR_UNSUPPORTED;
     }
 
@@ -682,8 +802,14 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         return MFX_ERR_UNSUPPORTED;
     }
 
+    if (!pParams->nQuality && (MFX_CODEC_JPEG == pParams->CodecId))
+    {
+        PrintHelp(strInput[0], MSDK_STRING("-q must be specified for JPEG encoder"));
+        return MFX_ERR_UNSUPPORTED;
+    }
+
     // set default values for optional parameters that were not set or were set incorrectly
-    mfxU32 nviews = (mfxU32)pParams->srcFileBuff.size();
+    mfxU32 nviews = (mfxU32)pParams->InputFiles.size();
     if ((nviews <= 1) || (nviews > 2))
     {
         if (!(MVC_ENABLED & pParams->MVC_flags))
@@ -727,12 +853,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     {
         pParams->nBitRate = CalculateDefaultBitrate(pParams->CodecId, pParams->nTargetUsage, pParams->nDstWidth,
             pParams->nDstHeight, pParams->dFrameRate);
-    }
-
-    // if nv12 option wasn't specified we expect input YUV file in YUV420 color format
-    if (!pParams->ColorFormat)
-    {
-        pParams->ColorFormat = MFX_FOURCC_YV12;
     }
 
     if (!pParams->nPicStruct)
@@ -824,6 +944,11 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         }
     }
 
+    if (pParams->dstFileBuff.size() == 0)
+    {
+        msdk_printf(MSDK_STRING("File output is disabled as -o option isn't specified\n"));
+    }
+
     return MFX_ERR_NONE;
 }
 
@@ -867,12 +992,11 @@ int main(int argc, char *argv[])
 
     if (MVC_ENABLED & Params.MVC_flags)
     {
-        pPipeline->SetMultiView();
         pPipeline->SetNumView(Params.numViews);
     }
 
     sts = pPipeline->Init(&Params);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "pPipeline->Init failed");
 
     pPipeline->PrintInfo();
 
@@ -892,15 +1016,15 @@ int main(int argc, char *argv[])
         {
             msdk_printf(MSDK_STRING("\nERROR: Hardware device was lost or returned an unexpected error. Recovering...\n"));
             sts = pPipeline->ResetDevice();
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+            MSDK_CHECK_STATUS(sts, "pPipeline->ResetDevice failed");
 
             sts = pPipeline->ResetMFXComponents(&Params);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+            MSDK_CHECK_STATUS(sts, "pPipeline->ResetMFXComponents failed");
             continue;
         }
         else
         {
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+            MSDK_CHECK_STATUS(sts, "pPipeline->Run failed");
             break;
         }
     }

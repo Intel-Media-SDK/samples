@@ -159,7 +159,7 @@ mfxStatus CDecodeD3DRender::Init(sWindowParams pWParams)
 
     m_hwdev->SetHandle((mfxHandleType)MFX_HANDLE_DEVICEWINDOW, m_Hwnd);
     sts = m_hwdev->Reset();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_hwdev->Reset failed");
 
     return sts;
 }
@@ -172,7 +172,7 @@ mfxStatus CDecodeD3DRender::RenderFrame(mfxFrameSurface1 *pSurface, mfxFrameAllo
         return MFX_ERR_UNKNOWN;
 
     mfxStatus sts = m_hwdev->RenderFrame(pSurface, pmfxAlloc);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_hwdev->RenderFrame failed");
 
     return sts;
 }

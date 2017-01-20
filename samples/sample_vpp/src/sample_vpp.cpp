@@ -367,7 +367,7 @@ int main(int argc, msdk_char *argv[])
         vppPrintHelp(argv[0], MSDK_STRING("Parameters parsing error"));
         return 1;
     }
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+    MSDK_CHECK_STATUS(sts, "vppParseInputString failed");
 
     // to check time stamp settings
     if (Params.ptsFR)
@@ -392,17 +392,17 @@ int main(int argc, msdk_char *argv[])
         Resources.numSrcFiles = Params.numStreams > MAX_INPUT_STREAMS ? MAX_INPUT_STREAMS : Params.numStreams;
         for (int i = 0; i < Resources.numSrcFiles; i++)
         {
-            ownToMfxFrameInfo( &(Params.inFrameInfo[i]), &(realFrameInfoIn[i]) );
+            ownToMfxFrameInfo( &(Params.inFrameInfo[i]), &(realFrameInfoIn[i]), true);
             // Set ptsMaker for the first stream only - it will store PTSes
             sts = yuvReaders[i].Init(Params.compositionParam.streamInfo[i].streamName,i==0 ? ptsMaker.get() : NULL);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "yuvReaders[i].Init failed");
         }
     }
     else
     {
         ownToMfxFrameInfo( &(Params.frameInfoIn[0]),  &realFrameInfoIn[0]);
         sts = yuvReaders[VPP_IN].Init(Params.strSrcFile,ptsMaker.get());
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, msdk_printf(MSDK_STRING("Cannot initialize file reader")));
+        MSDK_CHECK_STATUS(sts, "yuvReaders[VPP_IN].Init failed");
     }
     ownToMfxFrameInfo( &(Params.frameInfoOut[0]), &realFrameInfoOut);
 
@@ -419,7 +419,7 @@ int main(int argc, msdk_char *argv[])
             ptsMaker.get(),
             NULL,
             Params.isOutYV12);
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to init YUV writer\n")); WipeResources(&Resources); WipeParams(&Params);});
+        MSDK_CHECK_STATUS_SAFE(sts, "Resources.pDstFileWriters[i].Init failed", {WipeResources(&Resources); WipeParams(&Params);});
     }
 
 //#ifdef LIBVA_SUPPORT
@@ -429,13 +429,13 @@ int main(int argc, msdk_char *argv[])
 
     //prepare mfxParams
     sts = InitParamsVPP(&mfxParamsVideo, &Params, 0);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to prepare mfxParams\n")); WipeResources(&Resources); WipeParams(&Params);});
+            MSDK_CHECK_STATUS_SAFE(sts, "InitParamsVPP failed", {WipeResources(&Resources); WipeParams(&Params);});
 
     // prepare pts Checker
     if (ptsMaker.get())
     {
         sts = ptsMaker.get()->Init(&mfxParamsVideo, Params.asyncNum - 1, Params.ptsAdvanced);
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to prepare pts Checker\n")); WipeResources(&Resources); WipeParams(&Params);});
+                MSDK_CHECK_STATUS_SAFE(sts, "ptsMaker.get()->Init failed", {WipeResources(&Resources); WipeParams(&Params);});
     }
 
     // prepare ROI generator
@@ -454,7 +454,7 @@ int main(int argc, msdk_char *argv[])
     }
 
     sts = ConfigVideoEnhancementFilters(&Params, &Resources, 0);
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to ConfigVideoEnhancementFilters\n")); WipeResources(&Resources); WipeParams(&Params);});
+    MSDK_CHECK_STATUS_SAFE(sts, "ConfigVideoEnhancementFilters failed", {WipeResources(&Resources); WipeParams(&Params);});
 
     sts = InitResources(&Resources, &mfxParamsVideo, &Params);
     if(MFX_WRN_FILTER_SKIPPED == sts)
@@ -463,7 +463,7 @@ int main(int argc, msdk_char *argv[])
         MSDK_IGNORE_MFX_STS(sts, MFX_WRN_FILTER_SKIPPED);
 
     }
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to InitResources\n")); WipeResources(&Resources); WipeParams(&Params);});
+    MSDK_CHECK_STATUS_SAFE(sts, "InitResources failed", {WipeResources(&Resources); WipeParams(&Params);});
 
     if (MFX_WRN_PARTIAL_ACCELERATION == sts)
     {
@@ -481,7 +481,7 @@ int main(int argc, msdk_char *argv[])
         {
             sts = yuvReaders[i].PreAllocateFrameChunk(&mfxParamsVideo, &Params, allocator.pMfxAllocator);
         }
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to yuvReader.PreAllocateFrameChunk\n")); WipeResources(&Resources); WipeParams(&Params);});
+        MSDK_CHECK_STATUS_SAFE(sts, "yuvReaders[i].PreAllocateFrameChunk failed", {WipeResources(&Resources); WipeParams(&Params);});
     }
     else if (Params.numFrames)
     {
@@ -550,13 +550,13 @@ int main(int argc, msdk_char *argv[])
 
             //prepare mfxParams
             sts = InitParamsVPP(&mfxParamsVideo, &Params, paramID);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to InitParamsVPP for VPP_Reset\n")); WipeResources(&Resources); WipeParams(&Params);});
+            MSDK_CHECK_STATUS_SAFE(sts, "InitParamsVPP failed", {WipeResources(&Resources); WipeParams(&Params);});
 
             sts = ConfigVideoEnhancementFilters(&Params, &Resources, paramID);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to ConfigVideoEnhancementFilters for VPP_Reset\n")); WipeResources(&Resources); WipeParams(&Params);});
+            MSDK_CHECK_STATUS_SAFE(sts, "ConfigVideoEnchancementFilters failed", {WipeResources(&Resources); WipeParams(&Params);});
 
             sts = Resources.pProcessor->pmfxVPP->Reset(Resources.pVppParams);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Failed to Reset VPP component\n")); WipeResources(&Resources); WipeParams(&Params);});
+            MSDK_CHECK_STATUS_SAFE(sts, "Resources.pProcessor->pmfxVPP->Reset failed", {WipeResources(&Resources); WipeParams(&Params);});
 
             ownToMfxFrameInfo( &(Params.frameInfoIn[paramID]),  &realFrameInfoIn[0]);
             ownToMfxFrameInfo( &(Params.frameInfoOut[paramID]), &realFrameInfoOut);
@@ -754,13 +754,13 @@ int main(int argc, msdk_char *argv[])
         if (MFX_ERR_MORE_DATA == sts)
         {
             sts = OutputProcessFrame(Resources, &realFrameInfoOut, nFrames, paramID);
-            MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Failed to process remain sync points\n")); WipeResources(&Resources); WipeParams(&Params);});
+            MSDK_CHECK_STATUS_SAFE(sts, "OutputProcessFrame failed", {WipeResources(&Resources); WipeParams(&Params);});
         }
 
         // means that file has ended, need to go to buffering loop
         MSDK_IGNORE_MFX_STS(sts, MFX_ERR_MORE_DATA);
         // exit in case of other errors
-        MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, sts, { msdk_printf(MSDK_STRING("Exit in case of other errors\n")); WipeResources(&Resources); WipeParams(&Params);});
+        MSDK_CHECK_STATUS_SAFE(sts, "OutputProcessFrame failed", {WipeResources(&Resources); WipeParams(&Params);});
 
         // loop to get buffered frames from VPP
         while (MFX_ERR_NONE <= sts)
@@ -835,7 +835,7 @@ int main(int argc, msdk_char *argv[])
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_MORE_DATA);
 
     // report any errors that occurred
-    MSDK_CHECK_RESULT_SAFE(sts, MFX_ERR_NONE, 1, { msdk_printf(MSDK_STRING("Unexpected error during processing\n")); WipeResources(&Resources); WipeParams(&Params);});
+    MSDK_CHECK_STATUS_SAFE(sts, "Unexpected error", {WipeResources(&Resources); WipeParams(&Params);});
 
     msdk_printf(MSDK_STRING("\nVPP finished\n"));
     msdk_printf(MSDK_STRING("\n"));

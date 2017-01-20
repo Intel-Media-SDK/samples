@@ -21,6 +21,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include <math.h>
 #include <iostream>
+#include <algorithm>
 
 #include "vm/strings_defs.h"
 #include "time_statistics.h"
@@ -33,7 +34,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #pragma warning( disable : 4748 )
 
 msdk_tick CTimer::frequency = 0;
-msdk_tick CTimeStatistics::frequency = 0;
+msdk_tick CTimeStatisticsReal::frequency = 0;
 
 mfxStatus CopyBitstream2(mfxBitstream *dest, mfxBitstream *src)
 {
@@ -68,68 +69,41 @@ mfxStatus CopyBitstream2(mfxBitstream *dest, mfxBitstream *src)
 CSmplYUVReader::CSmplYUVReader()
 {
     m_bInited = false;
-    m_bIsMultiView = false;
-    m_fSource = NULL;
-    m_fSourceMVC = NULL;
-    m_numLoadedFiles = 0;
     m_ColorFormat = MFX_FOURCC_YV12;
 }
 
-mfxStatus CSmplYUVReader::Init(const msdk_char *strFileName, const mfxU32 ColorFormat, const mfxU32 numViews, std::vector<msdk_char*> srcFileBuff)
+mfxStatus CSmplYUVReader::Init(std::list<msdk_string> inputs, mfxU32 ColorFormat)
 {
-    MSDK_CHECK_POINTER(strFileName, MFX_ERR_NULL_PTR);
-    MSDK_CHECK_ERROR(msdk_strlen(strFileName), 0, MFX_ERR_NULL_PTR);
 
     Close();
 
-    //open source YUV file
-    if (!m_bIsMultiView)
-    {
-        MSDK_FOPEN(m_fSource, strFileName, MSDK_STRING("rb"));
-        MSDK_CHECK_POINTER(m_fSource, MFX_ERR_NULL_PTR);
-        ++m_numLoadedFiles;
-    }
-    else if (m_bIsMultiView)
-    {
-        if (srcFileBuff.size() > 1)
-        {
-            if (srcFileBuff.size() != numViews)
-                return MFX_ERR_UNSUPPORTED;
-
-            mfxU32 i;
-            m_fSourceMVC = new FILE*[numViews];
-            for (i = 0; i < numViews; ++i)
-            {
-                MSDK_FOPEN(m_fSourceMVC[i], srcFileBuff.at(i), MSDK_STRING("rb"));
-                MSDK_CHECK_POINTER(m_fSourceMVC[i], MFX_ERR_NULL_PTR);
-                ++m_numLoadedFiles;
-            }
-        }
-        else
-        {
-            /*mfxU32 i;
-            m_fSourceMVC = new FILE*[numViews];
-            for (i = 0; i < numViews; ++i)
-            {
-                MSDK_FOPEN(m_fSourceMVC[i], FormMVCFileName(strFileName, i).c_str(), MSDK_STRING("rb"));
-                MSDK_CHECK_POINTER(m_fSourceMVC[i], MFX_ERR_NULL_PTR);
-                ++m_numLoadedFiles;
-            }*/
-            return MFX_ERR_UNSUPPORTED;
-        }
-    }
-
-    //set init state to true in case of success
-    m_bInited = true;
-
-    if (ColorFormat == MFX_FOURCC_NV12 || ColorFormat == MFX_FOURCC_YV12 || ColorFormat == MFX_FOURCC_YUY2 || ColorFormat == MFX_FOURCC_RGB4 || ColorFormat == MFX_FOURCC_BGR4)
-    {
-        m_ColorFormat = ColorFormat;
-    }
-    else
+    if( MFX_FOURCC_NV12 != ColorFormat &&
+        MFX_FOURCC_YV12 != ColorFormat &&
+        MFX_FOURCC_YUY2 != ColorFormat &&
+        MFX_FOURCC_RGB4 != ColorFormat &&
+        MFX_FOURCC_BGR4 != ColorFormat &&
+        MFX_FOURCC_P010 != ColorFormat )
     {
         return MFX_ERR_UNSUPPORTED;
     }
+
+    if (!inputs.size())
+    {
+        return MFX_ERR_UNSUPPORTED;
+    }
+
+    for (ls_iterator it = inputs.begin(); it != inputs.end(); it++)
+    {
+        FILE *f = 0;
+        MSDK_FOPEN(f, (*it).c_str(), MSDK_STRING("rb"));
+        MSDK_CHECK_POINTER(f, MFX_ERR_NULL_PTR);
+
+        m_files.push_back(f);
+    }
+
+    m_ColorFormat = ColorFormat;
+
+    m_bInited = true;
 
     return MFX_ERR_NONE;
 }
@@ -141,28 +115,20 @@ CSmplYUVReader::~CSmplYUVReader()
 
 void CSmplYUVReader::Close()
 {
-    if (m_fSource)
+    for (mfxU32 i = 0; i < m_files.size(); i++)
     {
-        fclose(m_fSource);
-        m_fSource = NULL;
-
+        fclose(m_files[i]);
     }
-
-    if (m_fSourceMVC)
-    {
-        mfxU32 i = 0;
-        for (i = 0; i < m_numLoadedFiles; ++i)
-        {
-            if  (m_fSourceMVC[i] != NULL)
-            {
-                fclose(m_fSourceMVC[i]);
-                m_fSourceMVC[i] = NULL;
-            }
-        }
-    }
-
-    m_numLoadedFiles = 0;
+    m_files.clear();
     m_bInited = false;
+}
+
+void CSmplYUVReader::Reset()
+{
+    for (mfxU32 i = 0; i < m_files.size(); i++)
+    {
+        fseek(m_files[i], 0, SEEK_SET);
+    }
 }
 
 mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
@@ -179,9 +145,7 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
 
     mfxU32 vid = pInfo.FrameId.ViewId;
 
-    // this reader supports only NV12 mfx surfaces for code transparency,
-    // other formats may be added if application requires such functionality
-    if (MFX_FOURCC_NV12 != pInfo.FourCC && MFX_FOURCC_YV12 != pInfo.FourCC && MFX_FOURCC_YUY2 != pInfo.FourCC && MFX_FOURCC_RGB4 != pInfo.FourCC && MFX_FOURCC_BGR4 != pInfo.FourCC)
+    if (vid > m_files.size())
     {
         return MFX_ERR_UNSUPPORTED;
     }
@@ -197,6 +161,7 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
         h = pInfo.Height;
     }
 
+    mfxU32 nBytesPerPixel = (pInfo.FourCC == MFX_FOURCC_P010) ? 2 : 1;
 
     if (MFX_FOURCC_YUY2 == pInfo.FourCC || MFX_FOURCC_RGB4 == pInfo.FourCC || MFX_FOURCC_BGR4 == pInfo.FourCC)
     {
@@ -212,15 +177,9 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
 
             for(i = 0; i < h; i++)
             {
-                if (!m_bIsMultiView)
-                {
-                    nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSource);
-                }
-                else
-                {
-                    return MFX_ERR_UNSUPPORTED;
-                }
-                if (pitch != nBytesRead)
+                nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_files[vid]);
+
+                if ((mfxU32)4*w != nBytesRead)
                 {
                     return MFX_ERR_MORE_DATA;
                 }
@@ -232,14 +191,8 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
 
             for(i = 0; i < h; i++)
             {
-                if (!m_bIsMultiView)
-                {
-                    nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 2*w, m_fSource);
-                }
-                else
-                {
-                    return MFX_ERR_UNSUPPORTED;
-                }
+                nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 2*w, m_files[vid]);
+
                 if ((mfxU32)2*w != nBytesRead)
                 {
                     return MFX_ERR_MORE_DATA;
@@ -250,7 +203,7 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
             return MFX_ERR_UNSUPPORTED;
         }
     }
-    else if (MFX_FOURCC_NV12 == pInfo.FourCC || MFX_FOURCC_YV12 == pInfo.FourCC)
+    else if (MFX_FOURCC_NV12 == pInfo.FourCC || MFX_FOURCC_YV12 == pInfo.FourCC || MFX_FOURCC_P010 == pInfo.FourCC)
     {
         pitch = pData.Pitch;
         ptr = pData.Y + pInfo.CropX + pInfo.CropY * pData.Pitch;
@@ -258,14 +211,8 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
         // read luminance plane
         for(i = 0; i < h; i++)
         {
-            if (!m_bIsMultiView)
-            {
-                nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSource);
-            }
-            else
-            {
-                nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSourceMVC[vid]);
-            }
+            nBytesRead = (mfxU32)fread(ptr + i * pitch, nBytesPerPixel, w, m_files[vid]);
+
             if (w != nBytesRead)
             {
                 return MFX_ERR_MORE_DATA;
@@ -292,14 +239,7 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
                 // load U
                 for (i = 0; i < h; i++)
                 {
-                    if (!m_bIsMultiView)
-                    {
-                        nBytesRead = (mfxU32)fread(buf, 1, w, m_fSource);
-                    }
-                    else
-                    {
-                        nBytesRead = (mfxU32)fread(buf, 1, w, m_fSourceMVC[vid]);
-                    }
+                    nBytesRead = (mfxU32)fread(buf, 1, w, m_files[vid]);
                     if (w != nBytesRead)
                     {
                         return MFX_ERR_MORE_DATA;
@@ -308,18 +248,13 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
                     {
                         ptr[i * pitch + j * 2] = buf[j];
                     }
-        }
+                }
                 // load V
                 for (i = 0; i < h; i++)
                 {
-                    if (!m_bIsMultiView)
-                    {
-                        nBytesRead = (mfxU32)fread(buf, 1, w, m_fSource);
-                    }
-                    else
-                    {
-                        nBytesRead = (mfxU32)fread(buf, 1, w, m_fSourceMVC[vid]);
-                    }
+
+                    nBytesRead = (mfxU32)fread(buf, 1, w, m_files[vid]);
+
                     if (w != nBytesRead)
                     {
                         return MFX_ERR_MORE_DATA;
@@ -341,14 +276,9 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
 
                 for(i = 0; i < h; i++)
                 {
-                    if (!m_bIsMultiView)
-                    {
-                        nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSource);
-                    }
-                    else
-                    {
-                        nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSourceMVC[vid]);
-                    }
+
+                    nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_files[vid]);
+
                     if (w != nBytesRead)
                     {
                         return MFX_ERR_MORE_DATA;
@@ -356,38 +286,26 @@ mfxStatus CSmplYUVReader::LoadNextFrame(mfxFrameSurface1* pSurface)
                 }
                 for(i = 0; i < h; i++)
                 {
-                    if (!m_bIsMultiView)
-                    {
-                        nBytesRead = (mfxU32)fread(ptr2 + i * pitch, 1, w, m_fSource);
-                    }
-                    else
-                    {
-                        nBytesRead = (mfxU32)fread(ptr2 + i * pitch, 1, w, m_fSourceMVC[vid]);
-                    }
+                    nBytesRead = (mfxU32)fread(ptr2 + i * pitch, 1, w, m_files[vid]);
+
                     if (w != nBytesRead)
                     {
                         return MFX_ERR_MORE_DATA;
                     }
                 }
-
                 break;
             default:
                 return MFX_ERR_UNSUPPORTED;
             }
             break;
         case MFX_FOURCC_NV12:
+        case MFX_FOURCC_P010:
             h /= 2;
             ptr  = pData.UV + pInfo.CropX + (pInfo.CropY / 2) * pitch;
             for(i = 0; i < h; i++)
             {
-                if (!m_bIsMultiView)
-                {
-                    nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSource);
-                }
-                else
-                {
-                    nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSourceMVC[vid]);
-                }
+                nBytesRead = (mfxU32)fread(ptr + i * pitch, nBytesPerPixel, w, m_files[vid]);
+
                 if (w != nBytesRead)
                 {
                     return MFX_ERR_MORE_DATA;
@@ -424,7 +342,6 @@ void CSmplBitstreamWriter::Close()
     }
 
     m_bInited = false;
-    m_nProcessedFramesNum = 0;
 }
 
 mfxStatus CSmplBitstreamWriter::Init(const msdk_char *strFileName)
@@ -438,9 +355,15 @@ mfxStatus CSmplBitstreamWriter::Init(const msdk_char *strFileName)
     MSDK_FOPEN(m_fSource, strFileName, MSDK_STRING("wb+"));
     MSDK_CHECK_POINTER(m_fSource, MFX_ERR_NULL_PTR);
 
+    m_sFile = msdk_string(strFileName);
     //set init state to true in case of success
     m_bInited = true;
     return MFX_ERR_NONE;
+}
+
+mfxStatus CSmplBitstreamWriter::Reset()
+{
+    return Init(m_sFile.c_str());
 }
 
 mfxStatus CSmplBitstreamWriter::WriteNextFrame(mfxBitstream *pMfxBitstream, bool isPrint)
@@ -643,7 +566,7 @@ CIVFFrameReader::CIVFFrameReader()
 mfxStatus CIVFFrameReader::Init(const msdk_char *strFileName)
 {
     mfxStatus sts = CSmplBitstreamReader::Init(strFileName);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CSmplBitstreamReader::Init failed");
 
     // read and skip IVF header
     READ_BYTES(&m_hdr.dkif, sizeof(m_hdr.dkif));
@@ -660,7 +583,11 @@ mfxStatus CIVFFrameReader::Init(const msdk_char *strFileName)
 
     // check header
     MSDK_CHECK_NOT_EQUAL(MFX_MAKEFOURCC('D','K','I','F'), m_hdr.dkif, MFX_ERR_UNSUPPORTED);
-    MSDK_CHECK_NOT_EQUAL(MFX_MAKEFOURCC('V','P','8','0'), m_hdr.codec_FourCC, MFX_ERR_UNSUPPORTED);
+    if ((m_hdr.codec_FourCC != MFX_MAKEFOURCC('V','P','8','0')) &&
+        (m_hdr.codec_FourCC != MFX_MAKEFOURCC('V','P','9','0')))
+    {
+        return MFX_ERR_UNSUPPORTED;
+    }
 
     return MFX_ERR_NONE;
 }
@@ -708,6 +635,7 @@ CSmplYUVWriter::CSmplYUVWriter()
     m_fDest = NULL;
     m_fDestMVC = NULL;
     m_numCreatedFiles = 0;
+    m_nViews = 0;
 };
 
 mfxStatus CSmplYUVWriter::Init(const msdk_char *strFileName, const mfxU32 numViews)
@@ -715,13 +643,16 @@ mfxStatus CSmplYUVWriter::Init(const msdk_char *strFileName, const mfxU32 numVie
     MSDK_CHECK_POINTER(strFileName, MFX_ERR_NULL_PTR);
     MSDK_CHECK_ERROR(msdk_strlen(strFileName), 0, MFX_ERR_NOT_INITIALIZED);
 
+    m_sFile = msdk_string(strFileName);
+    m_nViews = numViews;
+
     Close();
 
     //open file to write decoded data
 
     if (!m_bIsMultiView)
     {
-        MSDK_FOPEN(m_fDest, strFileName, MSDK_STRING("wb"));
+        MSDK_FOPEN(m_fDest, m_sFile.c_str(), MSDK_STRING("wb"));
         MSDK_CHECK_POINTER(m_fDest, MFX_ERR_NULL_PTR);
         ++m_numCreatedFiles;
     }
@@ -734,7 +665,7 @@ mfxStatus CSmplYUVWriter::Init(const msdk_char *strFileName, const mfxU32 numVie
         m_fDestMVC = new FILE*[numViews];
         for (i = 0; i < numViews; ++i)
         {
-            MSDK_FOPEN(m_fDestMVC[i], FormMVCFileName(strFileName, i).c_str(), MSDK_STRING("wb"));
+            MSDK_FOPEN(m_fDestMVC[i], FormMVCFileName(m_sFile.c_str(), i).c_str(), MSDK_STRING("wb"));
             MSDK_CHECK_POINTER(m_fDestMVC[i], MFX_ERR_NULL_PTR);
             ++m_numCreatedFiles;
         }
@@ -743,6 +674,14 @@ mfxStatus CSmplYUVWriter::Init(const msdk_char *strFileName, const mfxU32 numVie
     m_bInited = true;
 
     return MFX_ERR_NONE;
+}
+
+mfxStatus CSmplYUVWriter::Reset()
+{
+    if (!m_bInited)
+        return MFX_ERR_NONE;
+
+    return Init(m_sFile.c_str(), m_nViews);
 }
 
 CSmplYUVWriter::~CSmplYUVWriter()
@@ -1441,7 +1380,8 @@ const msdk_char* ColorFormatToStr(mfxU32 format)
         return MSDK_STRING("YUY2");
     case MFX_FOURCC_UYVY:
        return MSDK_STRING("UYVY");
-
+    case MFX_FOURCC_P010:
+       return MSDK_STRING("P010");
     default:
         return MSDK_STRING("unsupported");
     }
@@ -1889,6 +1829,7 @@ bool IsDecodeCodecSupported(mfxU32 codecFormat)
         case CODEC_MVC:
         case MFX_CODEC_JPEG:
         case MFX_CODEC_VP8:
+        case MFX_CODEC_VP9:
         case MFX_CODEC_CAPTURE:
         break;
     default:
@@ -1923,6 +1864,7 @@ bool IsPluginCodecSupported(mfxU32 codecFormat)
         case MFX_CODEC_MPEG2:
         case MFX_CODEC_VC1:
         case MFX_CODEC_VP8:
+        case MFX_CODEC_VP9:
         case MFX_CODEC_CAPTURE:
         break;
     default:
@@ -1969,6 +1911,10 @@ mfxStatus StrFormatToCodecFormatFourCC(msdk_char* strInput, mfxU32 &codecFormat)
         {
             codecFormat = MFX_CODEC_VP8;
         }
+        else if (0 == msdk_strcmp(strInput, MSDK_STRING("vp9")))
+        {
+            codecFormat = MFX_CODEC_VP9;
+        }
         else if (0 == msdk_strcmp(strInput, MSDK_STRING("capture")))
         {
             codecFormat = MFX_CODEC_CAPTURE;
@@ -1978,6 +1924,85 @@ mfxStatus StrFormatToCodecFormatFourCC(msdk_char* strInput, mfxU32 &codecFormat)
     }
 
     return sts;
+}
+
+msdk_string StatusToString(mfxStatus sts)
+{
+    switch(sts)
+    {
+    case MFX_ERR_NONE:
+        return msdk_string(MSDK_STRING("MFX_ERR_NONE"));
+    case MFX_ERR_UNKNOWN:
+        return msdk_string(MSDK_STRING("MFX_ERR_UNKNOWN"));
+    case MFX_ERR_NULL_PTR:
+        return msdk_string(MSDK_STRING("MFX_ERR_NULL_PTR"));
+    case MFX_ERR_UNSUPPORTED:
+        return msdk_string(MSDK_STRING("MFX_ERR_UNSUPPORTED"));
+    case MFX_ERR_MEMORY_ALLOC:
+        return msdk_string(MSDK_STRING("MFX_ERR_MEMORY_ALLOC"));
+    case MFX_ERR_NOT_ENOUGH_BUFFER:
+        return msdk_string(MSDK_STRING("MFX_ERR_NOT_ENOUGH_BUFFER"));
+    case MFX_ERR_INVALID_HANDLE:
+        return msdk_string(MSDK_STRING("MFX_ERR_INVALID_HANDLE"));
+    case MFX_ERR_LOCK_MEMORY:
+        return msdk_string(MSDK_STRING("MFX_ERR_LOCK_MEMORY"));
+    case MFX_ERR_NOT_INITIALIZED:
+        return msdk_string(MSDK_STRING("MFX_ERR_NOT_INITIALIZED"));
+    case MFX_ERR_NOT_FOUND:
+        return msdk_string(MSDK_STRING("MFX_ERR_NOT_FOUND"));
+    case MFX_ERR_MORE_DATA:
+        return msdk_string(MSDK_STRING("MFX_ERR_MORE_DATA"));
+    case MFX_ERR_MORE_SURFACE:
+        return msdk_string(MSDK_STRING("MFX_ERR_MORE_SURFACE"));
+    case MFX_ERR_ABORTED:
+        return msdk_string(MSDK_STRING("MFX_ERR_ABORTED"));
+    case MFX_ERR_DEVICE_LOST:
+        return msdk_string(MSDK_STRING("MFX_ERR_DEVICE_LOST"));
+    case MFX_ERR_INCOMPATIBLE_VIDEO_PARAM:
+        return msdk_string(MSDK_STRING("MFX_ERR_INCOMPATIBLE_VIDEO_PARAM"));
+    case MFX_ERR_INVALID_VIDEO_PARAM:
+        return msdk_string(MSDK_STRING("MFX_ERR_INVALID_VIDEO_PARAM"));
+    case MFX_ERR_UNDEFINED_BEHAVIOR:
+        return msdk_string(MSDK_STRING("MFX_ERR_UNDEFINED_BEHAVIOR"));
+    case MFX_ERR_DEVICE_FAILED:
+        return msdk_string(MSDK_STRING("MFX_ERR_DEVICE_FAILED"));
+    case MFX_ERR_MORE_BITSTREAM:
+        return msdk_string(MSDK_STRING("MFX_ERR_MORE_BITSTREAM"));
+    case MFX_ERR_INCOMPATIBLE_AUDIO_PARAM:
+        return msdk_string(MSDK_STRING("MFX_ERR_INCOMPATIBLE_AUDIO_PARAM"));
+    case MFX_ERR_INVALID_AUDIO_PARAM:
+        return msdk_string(MSDK_STRING("MFX_ERR_INVALID_AUDIO_PARAM"));
+    case MFX_ERR_GPU_HANG:
+        return msdk_string(MSDK_STRING("MFX_ERR_GPU_HANG"));
+    case MFX_ERR_REALLOC_SURFACE:
+        return msdk_string(MSDK_STRING("MFX_ERR_REALLOC_SURFACE"));
+    case MFX_WRN_IN_EXECUTION:
+        return msdk_string(MSDK_STRING("MFX_WRN_IN_EXECUTION"));
+    case MFX_WRN_DEVICE_BUSY:
+        return msdk_string(MSDK_STRING("MFX_WRN_DEVICE_BUSY"));
+    case MFX_WRN_VIDEO_PARAM_CHANGED:
+        return msdk_string(MSDK_STRING("MFX_WRN_VIDEO_PARAM_CHANGED"));
+    case MFX_WRN_PARTIAL_ACCELERATION:
+        return msdk_string(MSDK_STRING("MFX_WRN_PARTIAL_ACCELERATION"));
+    case MFX_WRN_INCOMPATIBLE_VIDEO_PARAM:
+        return msdk_string(MSDK_STRING("MFX_WRN_INCOMPATIBLE_VIDEO_PARAM"));
+    case MFX_WRN_VALUE_NOT_CHANGED:
+        return msdk_string(MSDK_STRING("MFX_WRN_VALUE_NOT_CHANGED"));
+    case MFX_WRN_OUT_OF_RANGE:
+        return msdk_string(MSDK_STRING("MFX_WRN_OUT_OF_RANGE"));
+    case MFX_WRN_FILTER_SKIPPED:
+        return msdk_string(MSDK_STRING("MFX_WRN_FILTER_SKIPPED"));
+    case MFX_WRN_INCOMPATIBLE_AUDIO_PARAM:
+        return msdk_string(MSDK_STRING("MFX_WRN_INCOMPATIBLE_AUDIO_PARAM"));
+    case MFX_TASK_WORKING:
+        return msdk_string(MSDK_STRING("MFX_TASK_WORKING"));
+    case MFX_TASK_BUSY:
+        return msdk_string(MSDK_STRING("MFX_TASK_BUSY"));
+    case MFX_ERR_MORE_DATA_SUBMIT_TASK:
+        return msdk_string(MSDK_STRING("MFX_ERR_MORE_DATA_SUBMIT_TASK"));
+    default:
+        return msdk_string(MSDK_STRING("[Unknown status]"));
+    }
 }
 
 mfxI32 getMonitorType(msdk_char* str)
@@ -2190,4 +2215,25 @@ void WaitForDeviceToBecomeFree(MFXVideoSession& session, mfxSyncPoint& syncPoint
     } else {
         MSDK_SLEEP(DEVICE_WAIT_TIME);
     }
+}
+
+mfxU16 FourCCToChroma(mfxU32 fourCC)
+{
+    switch(fourCC)
+    {
+    case MFX_FOURCC_NV12:
+    case MFX_FOURCC_P010:
+        return MFX_CHROMAFORMAT_YUV420;
+    case MFX_FOURCC_NV16:
+    case MFX_FOURCC_P210:
+#ifdef FUTURE_API
+    case MFX_FOURCC_Y210:
+#endif
+    case MFX_FOURCC_YUY2:
+        return MFX_CHROMAFORMAT_YUV422;
+    case MFX_FOURCC_RGB4:
+        return MFX_CHROMAFORMAT_YUV444;
+    }
+
+    return MFX_CHROMAFORMAT_YUV420;
 }

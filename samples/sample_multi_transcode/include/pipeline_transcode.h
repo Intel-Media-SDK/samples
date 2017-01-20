@@ -87,6 +87,7 @@ namespace TranscodingSample
 
     enum EFieldCopyMode
     {
+        FC_NONE=0,
         FC_T2T=1,
         FC_T2B=2,
         FC_B2T=4,
@@ -152,6 +153,13 @@ namespace TranscodingSample
         mfxU16 GopPicSize;
         mfxU16 GopRefDist;
         mfxU16 NumRefFrame;
+        mfxU16 nBRefType;
+
+        mfxU16 CodecLevel;
+        mfxU16 CodecProfile;
+        mfxU16 MaxKbps;
+        mfxU16 InitialDelayInKB;
+        mfxU16 GopOptFlag;
 
         // MVC Specific Options
         bool   bIsMVC; // true if Multi-View-Codec is in use
@@ -549,6 +557,8 @@ namespace TranscodingSample
         mfxVideoParam                  m_mfxVppParams;
         mfxVideoParam                  m_mfxPluginParams;
         bool                           m_bIsVpp; // true if there's VPP in the pipeline
+        bool                           m_bIsFieldWeaving;
+        bool                           m_bIsFieldSplitting;
         bool                           m_bIsPlugin; //true if there's Plugin in the pipeline
         RotateParam                    m_RotateParam;
         mfxVideoParam                  m_mfxPreEncParams;
@@ -608,6 +618,8 @@ namespace TranscodingSample
 
         mfxU32          m_NumFramesForReset;
         MSDKMutex       m_mReset;
+
+        bool isHEVCSW;
 
         std::auto_ptr<ExtendedBSStore>        m_pBSStore;
 

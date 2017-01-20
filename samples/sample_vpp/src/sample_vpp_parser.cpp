@@ -61,7 +61,11 @@ msdk_printf(MSDK_STRING("   [-scrY  y]                  - cropY  of src video (d
 msdk_printf(MSDK_STRING("   [-scrW  w]                  - cropW  of src video (def: width)\n"));
 msdk_printf(MSDK_STRING("   [-scrH  h]                  - cropH  of src video (def: height)\n"));
 msdk_printf(MSDK_STRING("   [-sf   frameRate]           - frame rate of src video (def: 30.0)\n"));
-msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy)\n"));
+#ifdef FUTURE_API
+msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv|y210|y410)\n"));
+#else
+msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv)\n"));
+#endif
 msdk_printf(MSDK_STRING("   [-sbitshift 0|1]            - shift data to right or keep it the same way as in Microsoft's P010\n"));
 msdk_printf(MSDK_STRING("   [-sbitdepthluma value]      - shift luma channel to right to \"16 - value\" bytes\n"));
 msdk_printf(MSDK_STRING("   [-sbitdepthchroma value]    - shift chroma channel to right to \"16 - value\" bytes\n"));
@@ -69,6 +73,7 @@ msdk_printf(MSDK_STRING("   [-sbitdepthchroma value]    - shift chroma channel t
 msdk_printf(MSDK_STRING("   [-spic value]               - picture structure of src video\n"));
 msdk_printf(MSDK_STRING("                                 0 - interlaced top    field first\n"));
 msdk_printf(MSDK_STRING("                                 2 - interlaced bottom field first\n"));
+msdk_printf(MSDK_STRING("                                 3 - single field\n"));
 msdk_printf(MSDK_STRING("                                 1 - progressive (default)\n"));
 msdk_printf(MSDK_STRING("                                -1 - unknown\n\n"));
 
@@ -79,7 +84,11 @@ msdk_printf(MSDK_STRING("   [-dcrY  y]                  - cropY  of dst video (d
 msdk_printf(MSDK_STRING("   [-dcrW  w]                  - cropW  of dst video (def: width)\n"));
 msdk_printf(MSDK_STRING("   [-dcrH  h]                  - cropH  of dst video (def: height)\n"));
 msdk_printf(MSDK_STRING("   [-df  frameRate]            - frame rate of dst video (def: 30.0)\n"));
-msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support nv12|yuy2|rgb4|yv12)\n"));
+#ifdef FUTURE_API
+msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support nv12|yuy2|rgb4|yv12|ayuv|y210|y410)\n"));
+#else
+msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support nv12|yuy2|rgb4|yv12|ayuv)\n"));
+#endif
 msdk_printf(MSDK_STRING("   [-dbitshift 0|1]            - shift data to right or keep it the same way as in Microsoft's P010\n"));
 msdk_printf(MSDK_STRING("   [-dbitdepthluma value]      - shift luma channel to left to \"16 - value\" bytes\n"));
 msdk_printf(MSDK_STRING("   [-dbitdepthchroma value]    - shift chroma channel to left to \"16 - value\" bytes\n"));
@@ -87,6 +96,7 @@ msdk_printf(MSDK_STRING("   [-dbitdepthchroma value]    - shift chroma channel t
 msdk_printf(MSDK_STRING("   [-dpic value]               - picture structure of dst video\n"));
 msdk_printf(MSDK_STRING("                                 0 - interlaced top    field first\n"));
 msdk_printf(MSDK_STRING("                                 2 - interlaced bottom field first\n"));
+msdk_printf(MSDK_STRING("                                 3 - single field\n"));
 msdk_printf(MSDK_STRING("                                 1 - progressive (default)\n"));
 msdk_printf(MSDK_STRING("                                -1 - unknown\n\n"));
 
@@ -103,6 +113,7 @@ msdk_printf(MSDK_STRING("                                  fourcc=<format (FourC
 msdk_printf(MSDK_STRING("                                  picstruct=<picture structure of input video,\n"));
 msdk_printf(MSDK_STRING("                                             0 = interlaced top    field first\n"));
 msdk_printf(MSDK_STRING("                                             2 = interlaced bottom field first\n"));
+msdk_printf(MSDK_STRING("                                             3 = single field\n"));
 msdk_printf(MSDK_STRING("                                             1 = progressive (default)>\n"));
 msdk_printf(MSDK_STRING("                                  dstx=<X coordinate of input video located in the output (def: 0)>\n"));
 msdk_printf(MSDK_STRING("                                  dsty=<Y coordinate of input video located in the output (def: 0)>\n"));
@@ -148,6 +159,7 @@ msdk_printf(MSDK_STRING("                                  LumaKeyMax=255\n"));
 msdk_printf(MSDK_STRING("   Video Enhancement Algorithms\n"));
 
 msdk_printf(MSDK_STRING("   [-di_mode (mode)] - set type of deinterlace algorithm\n"));
+msdk_printf(MSDK_STRING("                        12 - advanced with Scene Change Detection (SCD) \n"));
 msdk_printf(MSDK_STRING("                        8 - reverse telecine for a selected telecine pattern (use -tc_pattern). For PTIR plug-in\n"));
 msdk_printf(MSDK_STRING("                        2 - advanced or motion adaptive (default)\n"));
 msdk_printf(MSDK_STRING("                        1 - simple or BOB\n\n"));
@@ -233,15 +245,19 @@ msdk_printf(MSDK_STRING("\n"));
 } // void vppPrintHelp(msdk_char *strAppName, msdk_char *strErrorMessage)
 
 
-mfxU8 GetPicStruct( mfxI8 picStruct )
+mfxU16 GetPicStruct( mfxI8 picStruct )
 {
-    if ( 0 == picStruct )
+ if ( 0 == picStruct )
     {
         return MFX_PICSTRUCT_FIELD_TFF;
     }
     else if( 2 == picStruct )
     {
         return MFX_PICSTRUCT_FIELD_BFF;
+    }
+    else if( 3 == picStruct )
+    {
+        return MFX_PICSTRUCT_FIELD_SINGLE;
     }
     else if( -1 == picStruct )
     {
@@ -252,7 +268,7 @@ mfxU8 GetPicStruct( mfxI8 picStruct )
         return MFX_PICSTRUCT_PROGRESSIVE;
     }
 
-} // mfxU8 GetPicStruct( mfxI8 picStruct )
+} // mfxU16 GetPicStruct( mfxI8 picStruct )
 
 
 mfxU32 Str2FourCC( msdk_char* strInput )
@@ -845,8 +861,9 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), reinterpret_cast<short int *>(&pParams->frameInfoIn[0].PicStruct));
-                pParams->frameInfoIn[0].PicStruct = GetPicStruct(pParams->frameInfoIn[0].PicStruct);
+                mfxI16 tmp;
+                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), reinterpret_cast<short int *>(&tmp));
+                pParams->frameInfoIn[0].PicStruct = GetPicStruct(static_cast<mfxI8>(tmp));
             }
             else if(0 == msdk_strcmp(strInput[i], MSDK_STRING("-sf")))
             {
@@ -894,8 +911,9 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), reinterpret_cast<short int *>(&pParams->frameInfoOut[0].PicStruct));
-                pParams->frameInfoOut[0].PicStruct = GetPicStruct(pParams->frameInfoOut[0].PicStruct);
+                mfxI16 tmp;
+                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), reinterpret_cast<short int *>(&tmp));
+                pParams->frameInfoOut[0].PicStruct = GetPicStruct(static_cast<mfxI8>(tmp));
             }
             else if(0 == msdk_strcmp(strInput[i], MSDK_STRING("-df")))
             {
@@ -1557,8 +1575,7 @@ mfxStatus ParseCompositionParfile(const msdk_char* parFileName, sInputParams* pP
         }
         else if (key.compare("picstruct") == 0)
         {
-            pParams->inFrameInfo[nStreamInd].PicStruct = (mfxU8) atoi(value.c_str());
-            pParams->inFrameInfo[nStreamInd].PicStruct = GetPicStruct(pParams->inFrameInfo[nStreamInd].PicStruct);
+            pParams->inFrameInfo[nStreamInd].PicStruct = GetPicStruct((mfxI8)atoi(value.c_str()));
         }
         else if (key.compare("dstx") == 0)
         {

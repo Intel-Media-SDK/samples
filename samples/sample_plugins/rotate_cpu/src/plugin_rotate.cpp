@@ -45,6 +45,8 @@ Rotate::Rotate() :
     m_bIsOutOpaque(false)
 {
     m_MaxNumTasks = 0;
+    m_pChunks = 0;
+    m_NumChunks = 0;
 
     memset(&m_VideoParam, 0, sizeof(m_VideoParam));
     memset(&m_Param, 0, sizeof(m_Param));
@@ -103,18 +105,18 @@ mfxStatus Rotate::Submit(const mfxHDL *in, mfxU32 in_num, const mfxHDL *out, mfx
     if (m_bIsInOpaque)
     {
         sts = m_mfxCore.GetRealSurface(surface_in, &real_surface_in);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_mfxCore.GetRealSurface failed");
     }
 
     if (m_bIsOutOpaque)
     {
         sts = m_mfxCore.GetRealSurface(surface_out, &real_surface_out);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_mfxCore.GetRealSurface failed");
     }
 
     // check validity of parameters
     sts = CheckInOutFrameInfo(&real_surface_in->Info, &real_surface_out->Info);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CheckInOutFrameInfo failed");
 
     mfxU32 ind = FindFreeTaskIdx();
 
@@ -160,7 +162,7 @@ mfxStatus Rotate::Execute(mfxThreadTask task, mfxU32 uid_p, mfxU32 uid_a)
     {
         // there's data to process
         sts = current_task->pProcessor->Process(&m_pChunks[uid_a]);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "current_task->pProcessor->Process failed");
         // last call?
         sts = ((m_NumChunks - 1) == uid_a) ? MFX_TASK_DONE : MFX_TASK_WORKING;
     }
@@ -214,14 +216,14 @@ mfxStatus Rotate::Init(mfxVideoParam *mfxParam)
     {
         sts = m_mfxCore.MapOpaqueSurface(pluginOpaqueAlloc->In.NumSurface,
             pluginOpaqueAlloc->In.Type, pluginOpaqueAlloc->In.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_mfxCore.MapOpaqueSurface failed");
     }
 
     if (m_bIsOutOpaque)
     {
         sts = m_mfxCore.MapOpaqueSurface(pluginOpaqueAlloc->Out.NumSurface,
             pluginOpaqueAlloc->Out.Type, pluginOpaqueAlloc->Out.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_mfxCore.MapOpaqueSurface failed");
     }
 
     m_MaxNumTasks = m_VideoParam.AsyncDepth;
@@ -258,7 +260,7 @@ mfxStatus Rotate::SetAuxParams(void* auxParam, int auxParamSize)
 
     // check validity of parameters
     mfxStatus sts = CheckParam(&m_VideoParam, pRotatePar);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CheckParam failed");
     m_Param = *pRotatePar;
     return MFX_ERR_NONE;
 }
@@ -293,14 +295,14 @@ mfxStatus Rotate::Close()
     {
         sts = m_mfxCore.UnmapOpaqueSurface(pluginOpaqueAlloc->In.NumSurface,
             pluginOpaqueAlloc->In.Type, pluginOpaqueAlloc->In.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_mfxCore.UnmapOpaqueSurface failed");
     }
 
     if (m_bIsOutOpaque)
     {
         sts = m_mfxCore.UnmapOpaqueSurface(pluginOpaqueAlloc->Out.NumSurface,
             pluginOpaqueAlloc->Out.Type, pluginOpaqueAlloc->Out.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_mfxCore.UnmapOpaqueSurface failed");
     }
 
     m_bInited = false;
@@ -401,11 +403,9 @@ mfxStatus Processor::Init(mfxFrameSurface1 *frame_in, mfxFrameSurface1 *frame_ou
 mfxStatus Processor::LockFrame(mfxFrameSurface1 *frame)
 {
     MSDK_CHECK_POINTER(frame, MFX_ERR_NULL_PTR);
-    //double lock impossible
-    if (frame->Data.Y != 0 && frame->Data.MemId !=0)
-        return MFX_ERR_UNSUPPORTED;
+
     //no allocator used, no need to do lock
-    if (frame->Data.Y != 0)
+    if (frame->Data.Y != 0 && !frame->Data.MemId)
         return MFX_ERR_NONE;
     //lock required
     MSDK_CHECK_POINTER(m_pAlloc, MFX_ERR_NULL_PTR);
@@ -462,9 +462,9 @@ mfxStatus Rotator180::Process(DataChunk *chunk)
     m_UVOut.resize(m_pOut->Info.Height * out_pitch / 2);
 
     sts = UnlockFrame(m_pIn);
-    MSDK_CHECK_RESULT(MFX_ERR_NONE, sts, MFX_ERR_NONE);
+    MSDK_CHECK_STATUS(sts, "UnlockFrame(m_pIn) failed");
     sts = UnlockFrame(m_pOut);
-    MSDK_CHECK_RESULT(MFX_ERR_NONE, sts, MFX_ERR_NONE);
+    MSDK_CHECK_STATUS(sts, "UnlockFrame(m_pOut) failed");
 
     mfxU8 *in_luma = &m_YIn.front() + m_pIn->Info.CropY * in_pitch + m_pIn->Info.CropX;
     mfxU8 *out_luma = &m_YOut.front() + m_pOut->Info.CropY * out_pitch + m_pOut->Info.CropX;
@@ -511,7 +511,7 @@ mfxStatus Rotator180::Process(DataChunk *chunk)
 
     // copy data from temporary buffer to output surface
     sts = LockFrame(m_pOut);
-    MSDK_CHECK_RESULT(MFX_ERR_NONE, sts, MFX_ERR_NONE);
+   MSDK_CHECK_STATUS(sts, "LockFrame(m_pOut) failed");
     MSDK_MEMCPY_BUF(m_pOut->Data.Y, chunk->StartLine * out_pitch, m_YOut.size(), &m_YOut.front(), m_YOut.size());
     MSDK_MEMCPY_BUF(m_pOut->Data.UV, chunk->StartLine * out_pitch, m_UVOut.size(), &m_UVOut.front(), m_UVOut.size());
     sts = UnlockFrame(m_pOut);

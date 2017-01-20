@@ -31,6 +31,7 @@ clEnqueueReleaseVA_APIMediaSurfacesINTEL_fn     clEnqueueReleaseVA_APIMediaSurfa
 
 OpenCLFilterVA::OpenCLFilterVA()
 {
+    m_vaDisplay = 0;
     for(size_t i = 0; i < c_shared_surfaces_num; i++)
     {
         m_SharedSurfaces[i] = VA_INVALID_ID;

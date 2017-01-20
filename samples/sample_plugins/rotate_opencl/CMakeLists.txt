@@ -19,10 +19,13 @@ list(APPEND sources.plus "${PLUGINS_COMMON_PATH}/mfx_plugin_module.cpp")
 set(DEPENDENCIES opencl libva)
 make_library( sample_plugin_opencl none shared )
 
+install( TARGETS ${target} LIBRARY DESTINATION ${MFX_SAMPLES_INSTALL_LIB_DIR} )
+
 if ( DEFINED OPENCL_FOUND )
     # copy .cl file into build directory
     execute_process( COMMAND ${CMAKE_COMMAND} -E copy
     "${CMAKE_SOURCE_DIR}/sample_plugins/rotate_opencl/src/ocl_rotate.cl"
     "${CMAKE_BIN_DIR}/${CMAKE_BUILD_TYPE}/ocl_rotate.cl" )
 
+    install( FILES src/ocl_rotate.cl DESTINATION ${MFX_SAMPLES_INSTALL_LIB_DIR} )
 endif ( )

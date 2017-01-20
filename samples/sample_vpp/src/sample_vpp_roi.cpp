@@ -46,7 +46,7 @@ int ownRandomGenerator_32s( int lowest, int highest )
 ROIGenerator::ROIGenerator( void )
 {
     m_width = m_height = 0;
-
+    m_seed = 0;
 } // ROIGenerator::ROIGenerator( void )
 
 

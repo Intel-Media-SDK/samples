@@ -703,6 +703,8 @@ void AVCSlice::Reset()
     m_seqParamSet = 0;
     m_seqParamSetMvcEx = 0;
     m_seqParamSetEx = 0;
+    m_dTime=0;
+    memset(&m_sliceHeader, 0, sizeof(m_sliceHeader));
 }
 
 AVCSliceHeader * AVCSlice::GetSliceHeader()

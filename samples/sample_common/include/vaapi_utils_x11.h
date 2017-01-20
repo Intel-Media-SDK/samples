@@ -25,7 +25,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <va/va_x11.h>
 #include "vaapi_utils.h"
 
-
 class X11LibVA : public CLibVA
 {
 public:
@@ -47,6 +46,7 @@ public:
 
 protected:
     Display* m_display;
+    VAContextID m_contextID;
     MfxLoader::XLib_Proxy   m_x11lib;
     MfxLoader::VA_X11Proxy  m_vax11lib;
 #if defined(X11_DRI3_SUPPORT)

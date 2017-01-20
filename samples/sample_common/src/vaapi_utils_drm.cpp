@@ -290,6 +290,7 @@ drmRenderer::drmRenderer(int fd, mfxI32 monitorType)
   : m_fd(fd)
   , m_bufmgr(NULL)
   , m_overlay_wrn(true)
+  , m_pCurrentRenderTargetSurface(NULL)
 {
     bool res = false;
     uint32_t connectorType = getConnectorType(monitorType);
@@ -362,23 +363,25 @@ bool drmRenderer::setupConnection(drmModeRes *resource, drmModeConnector* connec
     // we will use the first available mode - that's always mode with the highest resolution
     m_mode = connector->modes[0];
 
-    // TODO We can try to use encoder+crtc already attached to the connector
-    // but we need to get crtc index somehow. This can be done thru the global search
-    // below - need to find out whether there is another simpler way...
-#if 0
     // trying encoder+crtc which are currently attached to connector
     m_encoderID = connector->encoder_id;
     encoder = m_drmlib.drmModeGetEncoder(m_fd, m_encoderID);
     if (encoder) {
-      if (m_crtcID >= 0) {
-        m_crtcID = encoder->crtc_id;
-        ret = true;
-        msdk_printf(MSDK_STRING("drmrender: selected crtc already attached to connector\n"));
+      m_crtcID = encoder->crtc_id;
+      for (int j = 0; j < resource->count_crtcs; ++j)
+      {
+          if (m_crtcID == resource->crtcs[j])
+          {
+              m_crtcIndex = j;
+              break;
+          }
       }
+      ret = true;
+      msdk_printf(MSDK_STRING("drmrender: selected crtc already attached to connector\n"));
       m_drmlib.drmModeFreeEncoder(encoder);
     }
-#endif
 
+    // if previous attempt to get crtc failed, let performs global search
     // searching matching encoder+crtc globally
     if (!ret) {
       for (int i = 0; i < connector->count_encoders; ++i) {
@@ -386,7 +389,9 @@ bool drmRenderer::setupConnection(drmModeRes *resource, drmModeConnector* connec
         if (encoder) {
           for (int j = 0; j < resource->count_crtcs; ++j) {
             // check whether this CRTC works with the encoder
-            if (!(encoder->possible_crtcs & (1 << j))) continue;
+            if ( !((encoder->possible_crtcs & (1 << j)) &&
+                   (encoder->crtc_id == resource->crtcs[j])) )
+                continue;
 
             m_encoderID = connector->encoders[i];
             m_crtcIndex = j;
@@ -396,13 +401,15 @@ bool drmRenderer::setupConnection(drmModeRes *resource, drmModeConnector* connec
             break;
           }
           m_drmlib.drmModeFreeEncoder(encoder);
-          if (ret) break;
+          if (ret)
+              break;
         }
       }
     }
     if (ret) {
         m_crtc = m_drmlib.drmModeGetCrtc(m_fd, m_crtcID);
-        if (!m_crtc) ret = false;
+        if (!m_crtc)
+            ret = false;
     } else {
         msdk_printf(MSDK_STRING("drmrender: failed to select crtc\n"));
     }
@@ -568,6 +575,15 @@ mfxStatus drmRenderer::render(mfxFrameSurface1 * pSurface)
         }
     }
     dropMaster();
+
+    /* Unlock previous Render Target Surface (if exists) */
+    if (NULL != m_pCurrentRenderTargetSurface)
+        m_pCurrentRenderTargetSurface->Data.Locked--;
+
+    /* new Render target */
+    m_pCurrentRenderTargetSurface = pSurface;
+    /* And lock it */
+    m_pCurrentRenderTargetSurface->Data.Locked++;
     return MFX_ERR_NONE;
 }
 

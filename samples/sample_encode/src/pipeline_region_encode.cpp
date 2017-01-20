@@ -47,7 +47,7 @@ mfxStatus CResourcesPool::GetFreeTask(int resourceNum,sTask **ppTask)
         for(int i=0; i < size; i++)
         {
             sts = m_resources[i].TaskPool.SynchronizeFirstTask();
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources[i].TaskPool.SynchronizeFirstTask failed");
         }
 
         // try again
@@ -65,7 +65,7 @@ mfxStatus CResourcesPool::Init(int size,mfxIMPL impl, mfxVersion *pVer)
     for (int i = 0; i < size; i++)
     {
         mfxStatus sts = m_resources[i].Session.Init(impl, pVer);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_resources[i].Session.Init failed");
     }
     return MFX_ERR_NONE;
 }
@@ -75,7 +75,7 @@ mfxStatus CResourcesPool::InitTaskPools(CSmplBitstreamWriter* pWriter, mfxU32 nP
     for (int i = 0; i < size; i++)
     {
         mfxStatus sts = m_resources[i].TaskPool.Init(&m_resources[i].Session,pWriter,nPoolSize,nBufferSize,pOtherWriter);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_resources[i].TaskPool.Init failed");
     }
     return MFX_ERR_NONE;
 }
@@ -162,7 +162,7 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
     {
 #if D3D_SURFACES_SUPPORT
         sts = CreateHWDevice();
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "CreateHWDevice failed");
 
         mfxHDL hdl = NULL;
         mfxHandleType hdl_t =
@@ -172,7 +172,7 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
             MFX_HANDLE_D3D9_DEVICE_MANAGER;
 
         sts = m_hwdev->GetHandle(hdl_t, &hdl);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_hwdev->GetHandle failed");
 
         // handle is needed for HW library only
         mfxIMPL impl = 0;
@@ -181,7 +181,7 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
         {
             for (int i = 0; i < m_resources.GetSize(); i++) {
                 sts = m_resources[i].Session.SetHandle(hdl_t, hdl);
-                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                MSDK_CHECK_STATUS(sts, "m_resources[i].Session.SetHandle failed");
             }
         }
 
@@ -216,14 +216,14 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
         Call SetAllocator to pass allocator to Media SDK */
         for (int i = 0; i < m_resources.GetSize(); i++) {
             sts = m_resources[i].Session.SetFrameAllocator(m_pMFXAllocator);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources[i].Session.SetFrameAllocator failed");
         }
 
         m_bExternalAlloc = true;
 #endif
 #ifdef LIBVA_SUPPORT
         sts = CreateHWDevice();
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "CreateHWDevice failed");
         /* It's possible to skip failed result here and switch to SW implementation,
         but we don't process this way */
 
@@ -233,7 +233,7 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
         for (int i = 0; i < m_resources.GetSize(); i++) {
             // provide device manager to MediaSDK
             sts = m_resources[i].Session.SetHandle(MFX_HANDLE_VA_DISPLAY, hdl);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources[i].Session.SetHandle failed");
 
             // create VAAPI allocator
             m_pMFXAllocator = new vaapiFrameAllocator;
@@ -249,7 +249,7 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
             thus we demonstrate "external allocator" usage model.
             Call SetAllocator to pass allocator to mediasdk */
             sts = m_resources[i].Session.SetFrameAllocator(m_pMFXAllocator);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources[i].Session.SetFrameAllocator failed");
         }
         m_bExternalAlloc = true;
 #endif
@@ -264,14 +264,14 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
         if(MFX_IMPL_HARDWARE == MFX_IMPL_BASETYPE(impl))
         {
             sts = CreateHWDevice();
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "CreateHWDevice failed");
 
             mfxHDL hdl = NULL;
             sts = m_hwdev->GetHandle(MFX_HANDLE_VA_DISPLAY, &hdl);
             for (int i = 0; i < m_resources.GetSize(); i++) {
                 // provide device manager to MediaSDK
                 sts = m_resources[i].Session.SetHandle(MFX_HANDLE_VA_DISPLAY, hdl);
-                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                MSDK_CHECK_STATUS(sts, "m_resources[i].Session.SetHandle failed");
             }
         }
 #endif
@@ -287,7 +287,7 @@ mfxStatus CRegionEncodingPipeline::CreateAllocator()
 
     // initialize memory allocator
     sts = m_pMFXAllocator->Init(m_pmfxAllocatorParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pMFXAllocator->Init failed");
 
     return MFX_ERR_NONE;
 }
@@ -314,16 +314,14 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
     mfxStatus sts = MFX_ERR_NONE;
 
     // prepare input file reader
-    sts = m_FileReader.Init(pParams->strSrcFile,
-                            pParams->ColorFormat,
-                            pParams->numViews,
-                            pParams->srcFileBuff);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    sts = m_FileReader.Init(pParams->InputFiles,
+                            pParams->FileInputFourCC );
+    MSDK_CHECK_STATUS(sts, "m_FileReader.Init failed");
 
     m_MVCflags = pParams->MVC_flags;
 
     sts = InitFileWriters(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitFileWriters failed");
 
     m_timeAll = 0;
     if (pParams->nNumSlice == 0)
@@ -344,12 +342,12 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
     }
     else {
         sts = m_resources.Init(pParams->nNumSlice,MFX_IMPL_SOFTWARE, &min_version);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_resources.Init failed");
     }
 
 
     sts = MFXQueryVersion(m_resources[0].Session, &version); // get real API version of the loaded library
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "MFXQueryVersion failed");
 
     if ((pParams->MVC_flags & MVC_ENABLED) != 0 && !CheckVersion(&version, MSDK_FEATURE_MVC)) {
         msdk_printf(MSDK_STRING("error: MVC is not supported in the %d.%d API version\n"),
@@ -385,7 +383,7 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
         {
             m_pUserModule.reset(new MFXVideoUSER(m_resources[0].Session));
             sts = m_resources.CreatePlugins(pParams->pluginParams.pluginGuid,pParams->pluginParams.strPluginPath);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE,sts);
+            MSDK_CHECK_STATUS(sts, "m_resources.CreatePlugins failed");
         }
         else
         {
@@ -397,14 +395,14 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
             if (!AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
             {
                 sts = m_resources.CreatePlugins(pParams->pluginParams.pluginGuid,NULL);
-                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE,sts);
+                MSDK_CHECK_STATUS(sts, "m_resources.CreatePlugins failed");
             }
             if(sts==MFX_ERR_UNSUPPORTED)
             {
                 msdk_printf(MSDK_STRING("Default plugin cannot be loaded (possibly you have to define plugin explicitly)\n"));
             }
         }
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_resources.CreatePlugins failed");
     }
 
     // set memory type
@@ -412,24 +410,24 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
 
     // create and init frame allocator
     sts = CreateAllocator();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CreateAllocator failed");
 
     sts = InitMfxEncParams(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitMfxEncParams failed");
 
     sts = InitMfxVppParams(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "InitMfxVppParams failed");
 
     // MVC specific options
     if (MVC_ENABLED & m_MVCflags)
     {
         sts = AllocAndInitMVCSeqDesc();
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "AllocAndInitMVCSeqDesc failed");
     }
 
     // create encoder
     sts = m_resources.CreateEncoders();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE,sts);
+    MSDK_CHECK_STATUS(sts, "m_resources.CreateEncoders failed");
 
     // create preprocessor if resizing was requested from command line
     // or if different FourCC is set in InitMfxVppParams
@@ -442,7 +440,7 @@ mfxStatus CRegionEncodingPipeline::Init(sInputParams *pParams)
     }
 
     sts = ResetMFXComponents(pParams);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "ResetMFXComponents failed");
 
     return MFX_ERR_NONE;
 }
@@ -482,7 +480,7 @@ mfxStatus CRegionEncodingPipeline::ResetMFXComponents(sInputParams* pParams)
         if (m_resources[i].pEncoder) {
             sts = m_resources[i].pEncoder->Close();
             MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_INITIALIZED);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources[i].pEncoder->Close failed");
         }
     }
 
@@ -490,7 +488,7 @@ mfxStatus CRegionEncodingPipeline::ResetMFXComponents(sInputParams* pParams)
     {
         sts = m_pmfxVPP->Close();
         MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_INITIALIZED);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Close failed");
     }
 
     // free allocated frames
@@ -502,7 +500,7 @@ mfxStatus CRegionEncodingPipeline::ResetMFXComponents(sInputParams* pParams)
     }
 
     sts = AllocFrames();
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "AllocFrames failed");
 
     for (int regId = 0; regId < m_resources.GetSize(); regId++) {
         if (m_resources.GetSize() > 1)
@@ -515,7 +513,7 @@ mfxStatus CRegionEncodingPipeline::ResetMFXComponents(sInputParams* pParams)
             MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
         }
 
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_resources[regId].pEncoder->Init failed");
     }
 
     if (m_pmfxVPP)
@@ -526,13 +524,13 @@ mfxStatus CRegionEncodingPipeline::ResetMFXComponents(sInputParams* pParams)
             msdk_printf(MSDK_STRING("WARNING: partial acceleration\n"));
             MSDK_IGNORE_MFX_STS(sts, MFX_WRN_PARTIAL_ACCELERATION);
         }
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Init failed");
     }
 
     mfxU32 nEncodedDataBufferSize = m_mfxEncParams.mfx.FrameInfo.Width * m_mfxEncParams.mfx.FrameInfo.Height * 4;
 
     sts = m_resources.InitTaskPools(m_FileWriters.first, m_mfxEncParams.AsyncDepth, nEncodedDataBufferSize, m_FileWriters.second);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_resources.InitTaskPools failed");
 
     return MFX_ERR_NONE;
 }
@@ -600,7 +598,7 @@ mfxStatus CRegionEncodingPipeline::Run()
         {
             // get a pointer to a free task (bit stream and sync point for encoder)
             sts = m_resources.GetFreeTask(regId, &pCurrentTask);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources.GetFreeTask failed");
 
             for (;;)
             {
@@ -621,7 +619,7 @@ mfxStatus CRegionEncodingPipeline::Run()
                 else if (MFX_ERR_NOT_ENOUGH_BUFFER == sts)
                 {
                     sts = AllocateSufficientBuffer(&pCurrentTask->mfxBS);
-                    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                    MSDK_CHECK_STATUS(sts, "AllocateSufficientBuffer failed");
                     continue;
                 }
                 else
@@ -645,7 +643,7 @@ mfxStatus CRegionEncodingPipeline::Run()
     // means that the input file has ended, need to go to buffering loops
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_MORE_DATA);
     // exit in case of other errors
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "Unexpected error!!");
 
     // loop to get buffered frames from encoder
     while (MFX_ERR_NONE <= sts)
@@ -655,7 +653,7 @@ mfxStatus CRegionEncodingPipeline::Run()
         {
             // get a free task (bit stream and sync point for encoder)
             sts = m_resources.GetFreeTask(regId, &pCurrentTask);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources.GetFreeTask failed");
 
             for (;;)
             {
@@ -675,7 +673,7 @@ mfxStatus CRegionEncodingPipeline::Run()
                 else if (MFX_ERR_NOT_ENOUGH_BUFFER == sts)
                 {
                     sts = AllocateSufficientBuffer(&pCurrentTask->mfxBS);
-                    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+                    MSDK_CHECK_STATUS(sts, "AllocateSufficientBuffer failed");
                     continue;
                 }
                 else
@@ -691,7 +689,7 @@ mfxStatus CRegionEncodingPipeline::Run()
             if (sts == MFX_ERR_MORE_DATA)
                 continue;
             // exit in case of other errors
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_resources[regId].pEncoder->EncodeFrameAsync failed");
 
             timeCurEnd = time_get_tick();
             if (timeCurMax < (timeCurEnd - timeCurStart))
@@ -709,7 +707,7 @@ mfxStatus CRegionEncodingPipeline::Run()
     // EncodeFrameAsync and SyncOperation don't return this status
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_FOUND);
     // report any errors that occurred in asynchronous part
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "Unexpected error!!");
 
     return sts;
 }

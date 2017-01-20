@@ -74,7 +74,15 @@ private:
 class CVAAPIDeviceX11 : public CHWDevice
 {
 public:
-    CVAAPIDeviceX11(){m_window = NULL;}
+    CVAAPIDeviceX11()
+    {
+        m_window = NULL;
+        m_nRenderWinX=0;
+        m_nRenderWinY=0;
+        m_nRenderWinW=0;
+        m_nRenderWinH=0;
+        m_bRenderWin=false;
+    }
     virtual ~CVAAPIDeviceX11(void);
 
     virtual mfxStatus Init(
@@ -123,7 +131,14 @@ class Wayland;
 class CVAAPIDeviceWayland : public CHWDevice
 {
 public:
-    CVAAPIDeviceWayland(){}
+    CVAAPIDeviceWayland(){
+        m_nRenderWinX = 0;
+        m_nRenderWinY = 0;
+        m_nRenderWinW = 0;
+        m_nRenderWinH = 0;
+        m_isMondelloInputEnabled = false;
+        m_Wayland = NULL;
+    }
     virtual ~CVAAPIDeviceWayland(void);
 
     virtual mfxStatus Init(mfxHDL hWindow, mfxU16 nViews, mfxU32 nAdapterNum);

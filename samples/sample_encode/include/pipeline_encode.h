@@ -34,7 +34,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "mfxmvc.h"
 #include "mfxvideo.h"
-#include "mfxvp8.h"
 #include "mfxvideo++.h"
 #include "mfxplugin.h"
 #include "mfxplugin++.h"
@@ -67,7 +66,8 @@ struct sInputParams
 {
     mfxU16 nTargetUsage;
     mfxU32 CodecId;
-    mfxU32 ColorFormat;
+    mfxU32 FileInputFourCC;
+    mfxU32 EncodeFourCC;
     mfxU16 nPicStruct;
     mfxU16 nWidth; // source picture width
     mfxU16 nHeight; // source picture height
@@ -92,11 +92,10 @@ struct sInputParams
     MemType memType;
     bool bUseHWLib; // true if application wants to use HW MSDK library
 
-    msdk_char strSrcFile[MSDK_MAX_FILENAME_LEN];
+    std::list<msdk_string> InputFiles;
 
     sPluginParams pluginParams;
 
-    std::vector<msdk_char*> srcFileBuff;
     std::vector<msdk_char*> dstFileBuff;
 
     mfxU32  HEVCPluginVersion;
@@ -113,12 +112,26 @@ struct sInputParams
     mfxU16 nQPP;
     mfxU16 nQPB;
 
+    mfxU16 nGPB;
+
     bool enableQSVFF;
+
+    mfxU32 nTimeout;
+    mfxU16 nMemBuf;
 
     mfxU16 nNumSlice;
     bool UseRegionEncode;
 
     bool isV4L2InputEnabled;
+
+    mfxU16 CodecLevel;
+    mfxU16 CodecProfile;
+    mfxU16 MaxKbps;
+    mfxU16 BufferSizeInKB;
+    mfxU16 InitialDelayInKB;
+    mfxU16 GopOptFlag;
+
+    bool   bUncut;
 
 #if defined (ENABLE_V4L2_SUPPORT)
     msdk_char DeviceName[MSDK_MAX_FILENAME_LEN];
@@ -182,13 +195,14 @@ public:
     virtual mfxStatus ResetMFXComponents(sInputParams* pParams);
     virtual mfxStatus ResetDevice();
 
-    void SetMultiView();
     void SetNumView(mfxU32 numViews) { m_nNumView = numViews; }
     virtual void  PrintInfo();
 
     void InitV4L2Pipeline(sInputParams *pParams);
     mfxStatus CaptureStartV4L2Pipeline();
     void CaptureStopV4L2Pipeline();
+
+    void InsertIDR(bool bIsNextFrameIDR);
 
 #if defined (ENABLE_V4L2_SUPPORT)
     v4l2Device v4l2Pipeline;
@@ -209,12 +223,15 @@ protected:
 
     mfxU16 m_MVCflags; // MVC codec is in use
 
+    mfxU32 m_InputFourCC;
+
     std::auto_ptr<MFXVideoUSER> m_pUserModule;
     std::auto_ptr<MFXPlugin> m_pPlugin;
 
     MFXFrameAllocator* m_pMFXAllocator;
     mfxAllocatorParams* m_pmfxAllocatorParams;
     MemType m_memType;
+    mfxU16 m_nMemBuffer;
     bool m_bExternalAlloc; // use memory allocator as external for Media SDK
 
     mfxFrameSurface1* m_pEncSurfaces; // frames array for encoder input (vpp output)
@@ -223,7 +240,6 @@ protected:
     mfxFrameAllocResponse m_VppResponse;  // memory allocation response for vpp
 
     mfxU32 m_nNumView;
-
     mfxU32 m_nFramesToProcess; // number of frames to process
 
     // for disabling VPP algorithms
@@ -235,6 +251,7 @@ protected:
     mfxExtCodingOption2 m_CodingOption2;
     // HEVC
     mfxExtHEVCParam m_ExtHEVCParam;
+    mfxExtCodingOption3 m_CodingOption3;
 
     // external parameters for each component are stored in a vector
     std::vector<mfxExtBuffer*> m_VppExtParams;
@@ -244,8 +261,18 @@ protected:
 
     bool isV4L2InputEnabled;
 
-    CTimeStatistics m_statOverall;
-    CTimeStatistics m_statFile;
+    mfxU32 m_nTimeout;
+
+    bool   m_bFileWriterReset;
+    mfxU32 m_nFramesRead;
+    bool   m_bCutOutput;
+    bool   m_bInsertIDR;
+    bool   m_bTimeOutExceed;
+
+    mfxEncodeCtrl m_encCtrl;
+
+    CTimeStatisticsReal m_statOverall;
+    CTimeStatisticsReal m_statFile;
     virtual mfxStatus InitMfxEncParams(sInputParams *pParams);
     virtual mfxStatus InitMfxVppParams(sInputParams *pParams);
 
@@ -269,6 +296,8 @@ protected:
     virtual void DeleteFrames();
 
     virtual mfxStatus AllocateSufficientBuffer(mfxBitstream* pBS);
+    virtual mfxStatus FillBuffers();
+    virtual mfxStatus LoadNextFrame(mfxFrameSurface1* pSurf);
 
     virtual mfxStatus GetFreeTask(sTask **ppTask);
     virtual MFXVideoSession& GetFirstSession(){return m_mfxSession;}

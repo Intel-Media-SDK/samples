@@ -28,7 +28,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
         msdk_printf(MSDK_STRING("Error: %s\n"), strErrorMessage);
     }
 
-    msdk_printf(MSDK_STRING("Usage: %s [Options] -p PathToCameraPlugin -i InputFileNameBase -o OutputFileNameBase [numberOfFilesToDump]\n"), strAppName);
+    msdk_printf(MSDK_STRING("Usage: %s [Options] -i InputFileNameBase -o OutputFileNameBase [numberOfFilesToDump]\n"), strAppName);
     msdk_printf(MSDK_STRING("Options: \n"));
     msdk_printf(MSDK_STRING("   [-plugin_version ver]                                - define camera plugin version\n"));
     msdk_printf(MSDK_STRING("   [-a asyncDepth] / [-asyncDepth asyncDepth]          - set async depth, default %d \n"), CAM_SAMPLE_ASYNC_DEPTH);
@@ -622,7 +622,7 @@ int main(int argc, char *argv[])
     MSDK_CHECK_PARSE_RESULT(sts, MFX_ERR_NONE, 1);
 
     sts = Pipeline.Init(&Params);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+    MSDK_CHECK_STATUS(sts, "Pipeline.Init failed");
 
     // print stream info
     Pipeline.PrintInfo();
@@ -723,7 +723,7 @@ int main(int argc, char *argv[])
     //Pipeline.Close();
 
     if(MFX_ERR_ABORTED != sts)
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+        MSDK_CHECK_STATUS(sts, "Unexpected error!!");
 
     msdk_printf(MSDK_STRING("\nCamera pipe finished\n"));
 

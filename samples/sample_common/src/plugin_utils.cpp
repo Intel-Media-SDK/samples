@@ -94,6 +94,8 @@ const mfxPluginUID & msdkGetPluginUID(mfxIMPL impl, msdkComponentType type, mfxU
                 return MFX_PLUGINID_HEVCD_HW;
             case MFX_CODEC_VP8:
                 return MFX_PLUGINID_VP8D_HW;
+            case MFX_CODEC_VP9:
+                return MFX_PLUGINID_VP9D_HW;
             }
             break;
         case MSDK_VENCODE:

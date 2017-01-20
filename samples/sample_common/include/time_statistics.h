@@ -26,15 +26,13 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #pragma warning(disable:4100)
 
-class CTimeStatistics
+class CTimeStatisticsReal
 {
 public:
-    CTimeStatistics()
+    CTimeStatisticsReal()
     {
-#ifdef TIME_STATS
         ResetStatistics();
         start=0;
-#endif
     }
 
     static msdk_tick GetFrequency()
@@ -48,23 +46,16 @@ public:
 
     static mfxF64 ConvertToSeconds(msdk_tick elapsed)
     {
-#ifdef TIME_STATS
         return MSDK_GET_TIME(elapsed, 0, GetFrequency());
-#else
-        return 0;
-#endif
     }
 
     inline void StartTimeMeasurement()
     {
-#ifdef TIME_STATS
         start = msdk_time_get_tick();
-#endif
     }
 
     inline void StopTimeMeasurement()
     {
-#ifdef TIME_STATS
         mfxF64 delta=GetDeltaTime();
         totalTime+=delta;
         totalTimeSquares+=delta*delta;
@@ -79,109 +70,156 @@ public:
             maxTime=delta;
         }
         numMeasurements++;
-#endif
     }
 
     inline void StopTimeMeasurementWithCheck()
     {
-#ifdef TIME_STATS
         if(start)
         {
             StopTimeMeasurement();
         }
-#endif
     }
 
     inline mfxF64 GetDeltaTime()
     {
-#ifdef TIME_STATS
         return MSDK_GET_TIME(msdk_time_get_tick(), start, GetFrequency());
-#else
-        return 0;
-#endif
     }
 
     inline void PrintStatistics(const msdk_char* prefix)
     {
-#ifdef TIME_STATS
         msdk_printf(MSDK_STRING("%s Total:%.3lf(%lld smpls),Avg %.3lf,StdDev:%.3lf,Min:%.3lf,Max:%.3lf\n"),prefix,totalTime*1000,numMeasurements,GetAvgTime()*1000,GetTimeStdDev()*1000,minTime*1000,maxTime*1000);
-#endif
     }
 
     inline mfxU64 GetNumMeasurements()
     {
-#ifdef TIME_STATS
         return numMeasurements;
-#else
-        return 0;
-#endif
     }
 
     inline mfxF64 GetAvgTime()
     {
-#ifdef TIME_STATS
         return numMeasurements ? totalTime/numMeasurements : 0;
-#else
-        return 0;
-#endif
     }
 
     inline mfxF64 GetTimeStdDev()
     {
-#ifdef TIME_STATS
         mfxF64 avg = GetAvgTime();
         return numMeasurements ? sqrt(totalTimeSquares/numMeasurements-avg*avg) : 0;
-#else
-        return 0;
-#endif
     }
 
-inline mfxF64 GetMinTime()
+    inline mfxF64 GetMinTime()
     {
-#ifdef TIME_STATS
         return minTime;
-#else
-        return 0;
-#endif
     }
 
-inline mfxF64 GetMaxTime()
+    inline mfxF64 GetMaxTime()
     {
-#ifdef TIME_STATS
         return maxTime;
-#else
-        return 0;
-#endif
     }
 
     inline mfxF64 GetTotalTime()
     {
-#ifdef TIME_STATS
         return  totalTime;
-#else
-        return 0;
-#endif
     }
 
     inline void ResetStatistics()
     {
-#ifdef TIME_STATS
         totalTime=0;
         totalTimeSquares=0;
         minTime=1E100;
         maxTime=-1;
         numMeasurements=0;
-#endif
     }
 
 protected:
     static msdk_tick frequency;
-#ifdef TIME_STATS
+
     msdk_tick start;
     mfxF64 totalTime;
     mfxF64 totalTimeSquares;
     mfxF64 minTime;
     mfxF64 maxTime;
     mfxU64 numMeasurements;
-#endif
+
 };
+
+class CTimeStatisticsDummy
+{
+public:
+    static msdk_tick GetFrequency()
+    {
+        if (!frequency)
+        {
+            frequency = msdk_time_get_frequency();
+        }
+        return frequency;
+    }
+
+    static mfxF64 ConvertToSeconds(msdk_tick elapsed)
+    {
+        return 0;
+    }
+
+    inline void StartTimeMeasurement()
+    {
+    }
+
+    inline void StopTimeMeasurement()
+    {
+    }
+
+    inline void StopTimeMeasurementWithCheck()
+    {
+    }
+
+    inline mfxF64 GetDeltaTime()
+    {
+        return 0;
+    }
+
+    inline void PrintStatistics(const msdk_char* prefix)
+    {
+    }
+
+    inline mfxU64 GetNumMeasurements()
+    {
+        return 0;
+    }
+
+    inline mfxF64 GetAvgTime()
+    {
+        return 0;
+    }
+
+    inline mfxF64 GetTimeStdDev()
+    {
+        return 0;
+    }
+
+    inline mfxF64 GetMinTime()
+    {
+        return 0;
+    }
+
+    inline mfxF64 GetMaxTime()
+    {
+        return 0;
+    }
+
+    inline mfxF64 GetTotalTime()
+    {
+        return  0;
+    }
+
+    inline void ResetStatistics()
+    {
+    }
+
+protected:
+    static msdk_tick frequency;
+};
+
+#ifdef TIME_STATS
+    typedef CTimeStatisticsReal CTimeStatistics;
+#else
+    typedef CTimeStatisticsDummy CTimeStatistics;
+#endif

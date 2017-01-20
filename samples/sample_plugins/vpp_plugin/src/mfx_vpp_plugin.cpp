@@ -131,7 +131,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         m_pmfxPluginParam = par;
 
         sts = m_pPlugin->QueryIOSurf(m_pmfxPluginParam, &plgAllocRequest0, &plgAllocRequest1);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pPlugin->QueryIOSurf failed");
     }
     else
     {
@@ -143,7 +143,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         m_pmfxVPP1Param = par1;
 
         sts = m_pVPP1->QueryIOSurf(m_pmfxVPP1Param, vpp1Request);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pVPP1->QueryIOSurf failed");
 
         plgAllocRequest0.Type = (mfxU16) ((vpp1Request[1].Type & ~MFX_MEMTYPE_EXTERNAL_FRAME) | MFX_MEMTYPE_INTERNAL_FRAME);
 
@@ -157,7 +157,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         if (!bIsOpaque)
         {
             sts = m_FrameAllocator.Alloc(m_FrameAllocator.pthis, &plgAllocRequest0, &allocResponse);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_FrameAllocator.Alloc failed");
         }
         else
         {
@@ -171,7 +171,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         m_allocResponses[0].reset(new mfxFrameAllocResponse(allocResponse));
         //create pool of mfxFrameSurface1 structures
         sts = m_SurfacePool1.Alloc(allocResponse, plgAllocRequest0.Info, bIsOpaque);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_SurfacePool1.Alloc failed");
 
         // fill mfxExtOpaqueAlloc buffer of vpp and plugin in case of opaque memory
         if (bIsOpaque)
@@ -201,11 +201,12 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
     if (par2 && par1)
     {
         //setting the same allocator in second session
-        MSDK_CHECK_RESULT(sts = MFXVideoCORE_SetFrameAllocator(m_session2, &m_FrameAllocator), MFX_ERR_NONE, sts);
+        sts = MFXVideoCORE_SetFrameAllocator(m_session2, &m_FrameAllocator);
+        MSDK_CHECK_STATUS(sts, "MFXVideoCORE_SetFrameAllocator failed");
         if (NULL != m_mfxHDL)
         {
-            MSDK_CHECK_RESULT(sts = MFXVideoCORE_SetHandle(m_session2,
-                MFX_HANDLE_D3D9_DEVICE_MANAGER, m_mfxHDL), MFX_ERR_NONE, sts);
+            sts = MFXVideoCORE_SetHandle(m_session2, MFX_HANDLE_D3D9_DEVICE_MANAGER, m_mfxHDL);
+            MSDK_CHECK_STATUS(sts, "MFXVideoCORE_SetHandle failed");
         }
     }
 
@@ -214,7 +215,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         m_pmfxVPP2Param = par2;
 
         sts = m_pVPP2->QueryIOSurf(m_pmfxVPP2Param, vpp2Request);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pVPP2->QueryIOSurf failed");
 
         plgAllocRequest1.Type = (mfxU16) ((vpp2Request[1].Type & ~MFX_MEMTYPE_EXTERNAL_FRAME) | MFX_MEMTYPE_INTERNAL_FRAME);
         plgAllocRequest1.NumFrameSuggested = plgAllocRequest1.NumFrameSuggested + vpp2Request[0].NumFrameSuggested;
@@ -231,7 +232,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         if (!bIsOpaque)
         {
             sts = m_FrameAllocator.Alloc(m_FrameAllocator.pthis, &plgAllocRequest1, &allocResponse);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+            MSDK_CHECK_STATUS(sts, "m_FrameAllocator.Alloc failed");
         }
         else
         {
@@ -245,7 +246,7 @@ mfxStatus MFXVideoVPPPlugin::AllocateFrames(mfxVideoParam *par, mfxVideoParam *p
         m_allocResponses[1].reset(new mfxFrameAllocResponse(allocResponse));
         //create pool of mfxFrameSurface1 structures
         sts = m_SurfacePool2.Alloc(allocResponse, plgAllocRequest1.Info, bIsOpaque);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_SurfacePool2.Alloc failed");
 
         // fill mfxExtOpaqueAlloc buffer of vpp and plugin in case of opaque memory
         if (bIsOpaque)
@@ -295,7 +296,7 @@ mfxStatus MFXVideoVPPPlugin::QueryIOSurf(mfxVideoParam *par, mfxFrameAllocReques
         m_pmfxPluginParam = par;
 
         sts = m_pPlugin->QueryIOSurf(m_pmfxPluginParam, &plgAllocRequest0, &plgAllocRequest1);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pPlugin->QueryIOSurf failed");
 
         request[0] = plgAllocRequest0;
         request[1] = plgAllocRequest1;
@@ -313,7 +314,7 @@ mfxStatus MFXVideoVPPPlugin::QueryIOSurf(mfxVideoParam *par, mfxFrameAllocReques
         MSDK_CHECK_POINTER(m_pVPP1, MFX_ERR_MEMORY_ALLOC);
 
         sts = m_pVPP1->QueryIOSurf(m_pmfxVPP1Param, vpp1Request);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pVPP1->QueryIOSurf failed");
 
         plgAllocRequest0.Type = (mfxU16) ((vpp1Request[1].Type & ~MFX_MEMTYPE_EXTERNAL_FRAME) | MFX_MEMTYPE_INTERNAL_FRAME);
         plgAllocRequest0.NumFrameSuggested = plgAllocRequest0.NumFrameSuggested + vpp1Request[1].NumFrameSuggested;
@@ -335,8 +336,10 @@ mfxStatus MFXVideoVPPPlugin::QueryIOSurf(mfxVideoParam *par, mfxFrameAllocReques
     mfxSession session2 = m_session;
     if (par2 && par1)
     {
-        MSDK_CHECK_RESULT(sts = MFXCloneSession(m_session, &m_session2), MFX_ERR_NONE, sts);
-        MSDK_CHECK_RESULT(sts = MFXJoinSession(m_session, m_session2), MFX_ERR_NONE, sts);
+        sts = MFXCloneSession(m_session, &m_session2);
+        MSDK_CHECK_STATUS(sts, "MFXCloneSession failed");
+        sts = MFXJoinSession(m_session, m_session2);
+        MSDK_CHECK_STATUS(sts, "MFXJoinSession failed");
 
         session2 = m_session2;
     }
@@ -349,7 +352,7 @@ mfxStatus MFXVideoVPPPlugin::QueryIOSurf(mfxVideoParam *par, mfxFrameAllocReques
         MSDK_CHECK_POINTER(m_pVPP2, MFX_ERR_MEMORY_ALLOC);
 
         sts = m_pVPP2->QueryIOSurf(m_pmfxVPP2Param, vpp2Request);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pVPP2->QueryIOSurf failed");
 
         plgAllocRequest1.Type = (mfxU16) ((vpp2Request[1].Type & ~MFX_MEMTYPE_EXTERNAL_FRAME) | MFX_MEMTYPE_INTERNAL_FRAME);
         plgAllocRequest1.NumFrameSuggested = plgAllocRequest1.NumFrameSuggested + vpp2Request[0].NumFrameSuggested;
@@ -374,7 +377,7 @@ mfxStatus MFXVideoVPPPlugin::Init(mfxVideoParam *par, mfxVideoParam *par1, mfxVi
     mfxStatus sts = MFX_ERR_NONE;
 
     sts = AllocateFrames(par, par1, par2);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "AllocateFrames failed");
 
     // create and init Plugin
     if (m_pPlugin)
@@ -384,14 +387,14 @@ mfxStatus MFXVideoVPPPlugin::Init(mfxVideoParam *par, mfxVideoParam *par1, mfxVi
         // Register plugin, acquire mfxCore interface which will be needed in Init
         mfxPlugin plg = make_mfx_plugin_adapter(m_pPlugin);
         sts = MFXVideoUSER_Register(m_session, 0, &plg);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "MFXVideoUSER_Register failed");
 
         // Init plugin
         sts = m_pPlugin->Init(m_pmfxPluginParam);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pPlugin->Init failed");
 
         sts = m_pPlugin->SetAuxParams(m_pAuxParam, m_AuxParamSize);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pPlugin->SetAuxParams failed");
     } else
     {
         return MFX_ERR_NOT_INITIALIZED;
@@ -401,7 +404,7 @@ mfxStatus MFXVideoVPPPlugin::Init(mfxVideoParam *par, mfxVideoParam *par1, mfxVi
     {
         m_pmfxVPP1Param = par1;
         sts = m_pVPP1->Init(m_pmfxVPP1Param);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pVPP1->Init failed");
     }
     else if (par1 || m_pVPP1) // configuration differs from the one provided in QueryIOSurf
     {
@@ -412,7 +415,7 @@ mfxStatus MFXVideoVPPPlugin::Init(mfxVideoParam *par, mfxVideoParam *par1, mfxVi
     {
         m_pmfxVPP2Param = par2;
         sts = m_pVPP2->Init(m_pmfxVPP2Param);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "m_pVPP2->Init failed");
     }
     else if (par2 || m_pVPP2)// configuration differs from the one provided in QueryIOSurf
     {
@@ -545,7 +548,7 @@ mfxStatus MFXVideoVPPPlugin::RunPlugin(mfxFrameSurface1 *in, mfxFrameSurface1 *o
     }
     else
     {
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "MFXVideoUSER_ProcessFrameAsync failed");
 
         return RunVPP2(pOutSurface, out, syncp);
     }

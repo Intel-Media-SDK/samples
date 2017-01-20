@@ -63,7 +63,7 @@ mfxStatus CD3D11Device::FillSCD1(DXGI_SWAP_CHAIN_DESC1& scd1)
     scd1.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd1.BufferCount = 2;                               // Use double buffering to minimize latency.
     scd1.Scaling = DXGI_SCALING_STRETCH;
-    scd1.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    scd1.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
     scd1.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
     return MFX_ERR_NONE;
@@ -146,7 +146,7 @@ mfxStatus CD3D11Device::Init(
         DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {0};
 
         sts = FillSCD1(swapChainDesc);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "FillSCD1 failed");
 
         hres = m_pDXGIFactory->CreateSwapChainForHwnd(m_pD3D11Device,
             (HWND)hWindow,
@@ -205,7 +205,7 @@ mfxStatus CD3D11Device::Reset()
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {0};
 
     mfxStatus sts = FillSCD1(swapChainDesc);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "FillSCD1 failed");
 
     HRESULT hres = S_OK;
     hres = m_pDXGIFactory->CreateSwapChainForHwnd(m_pD3D11Device,
@@ -247,7 +247,7 @@ mfxStatus CD3D11Device::RenderFrame(mfxFrameSurface1 * pSrf, mfxFrameAllocator *
     mfxStatus sts;
 
     sts = CreateVideoProcessor(pSrf);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CreateVideoProcessor failed");
 
     hres = m_pSwapChain->GetBuffer(0, __uuidof( ID3D11Texture2D ), (void**)&m_pDXGIBackBuffer.p);
     if (FAILED(hres))
@@ -290,7 +290,7 @@ mfxStatus CD3D11Device::RenderFrame(mfxFrameSurface1 * pSrf, mfxFrameAllocator *
 
     mfxHDLPair pair = {NULL};
     sts = pAlloc->GetHDL(pAlloc->pthis, pSrf->Data.MemId, (mfxHDL*)&pair);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "pAlloc->GetHDL failed");
 
     ID3D11Texture2D  *pRTTexture2D = reinterpret_cast<ID3D11Texture2D*>(pair.first);
     D3D11_TEXTURE2D_DESC RTTexture2DDesc;

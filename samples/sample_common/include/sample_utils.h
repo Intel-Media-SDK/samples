@@ -100,21 +100,21 @@ bool IsPluginCodecSupported(mfxU32 codecFormat);
 class CSmplYUVReader
 {
 public :
-
+    typedef std::list<msdk_string>::iterator ls_iterator;
     CSmplYUVReader();
     virtual ~CSmplYUVReader();
 
     virtual void Close();
-    virtual mfxStatus Init(const msdk_char *strFileName, const mfxU32 ColorFormat, const mfxU32 numViews, std::vector<msdk_char*> srcFileBuff);
+    virtual mfxStatus Init(std::list<msdk_string> inputs, mfxU32 ColorFormat);
     virtual mfxStatus LoadNextFrame(mfxFrameSurface1* pSurface);
+    virtual void Reset();
     mfxU32 m_ColorFormat; // color format of input YUV data, YUV420 or NV12
 
-    void SetMultiView() { m_bIsMultiView = true; }
-
 protected:
-    FILE* m_fSource, **m_fSourceMVC;
-    bool m_bInited, m_bIsMultiView;
-    mfxU32 m_numLoadedFiles;
+
+    std::vector<FILE*> m_files;
+
+    bool m_bInited;
 };
 
 class CSmplBitstreamWriter
@@ -126,12 +126,14 @@ public :
 
     virtual mfxStatus Init(const msdk_char *strFileName);
     virtual mfxStatus WriteNextFrame(mfxBitstream *pMfxBitstream, bool isPrint = true);
+    virtual mfxStatus Reset();
     virtual void Close();
     mfxU32 m_nProcessedFramesNum;
 
 protected:
     FILE*       m_fSource;
     bool        m_bInited;
+    msdk_string m_sFile;
 };
 
 class CSmplYUVWriter
@@ -143,6 +145,7 @@ public :
 
     virtual void      Close();
     virtual mfxStatus Init(const msdk_char *strFileName, const mfxU32 numViews);
+    virtual mfxStatus Reset();
     virtual mfxStatus WriteNextFrame(mfxFrameSurface1 *pSurface);
     virtual mfxStatus WriteNextFrameI420(mfxFrameSurface1 *pSurface);
 
@@ -152,6 +155,8 @@ protected:
     FILE         *m_fDest, **m_fDestMVC;
     bool         m_bInited, m_bIsMultiView;
     mfxU32       m_numCreatedFiles;
+    msdk_string  m_sFile;
+    mfxU32       m_nViews;
 };
 
 class CSmplBitstreamReader
@@ -282,6 +287,7 @@ public:
     CTimeInterval(double &dRef , bool bEnable = true)
         : m_start(dRef)
         , m_bEnable(bEnable)
+        , m_StartTick(0)
     {
         if (!m_bEnable)
             return;
@@ -291,6 +297,7 @@ public:
         : m_start(m_own)
         , m_own()
         , m_bEnable(bEnable)
+        , m_StartTick(0)
     {
         if (!m_bEnable)
             return;
@@ -690,9 +697,11 @@ template<typename T>
     }
 
 mfxStatus StrFormatToCodecFormatFourCC(msdk_char* strInput, mfxU32 &codecFormat);
-
+msdk_string StatusToString(mfxStatus sts);
 mfxI32 getMonitorType(msdk_char* str);
 
 void WaitForDeviceToBecomeFree(MFXVideoSession& session, mfxSyncPoint& syncPoint,mfxStatus& currentStatus);
+
+mfxU16 FourCCToChroma(mfxU32 fourCC);
 
 #endif //__SAMPLE_UTILS_H__

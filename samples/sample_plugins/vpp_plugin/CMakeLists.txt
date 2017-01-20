@@ -4,3 +4,5 @@ include_directories (
 )
 
 make_library( shortname none static )
+
+install( TARGETS ${target} ARCHIVE DESTINATION ${MFX_SAMPLES_INSTALL_LIB_DIR} )

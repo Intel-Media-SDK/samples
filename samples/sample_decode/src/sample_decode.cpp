@@ -100,6 +100,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-calc_latency]           - calculates latency during decoding and prints log (supported only for H.264 and JPEG codec)\n"));
     msdk_printf(MSDK_STRING("   [-async]                  - depth of asynchronous pipeline. default value is 4. must be between 1 and 20\n"));
     msdk_printf(MSDK_STRING("   [-gpucopy::<on,off>] Enable or disable GPU copy mode\n"));
+    msdk_printf(MSDK_STRING("   [-timeout]                - timeout in seconds\n"));
 #if !defined(_WIN32) && !defined(_WIN64)
     msdk_printf(MSDK_STRING("   [-threads_num]            - number of mediasdk task threads\n"));
     msdk_printf(MSDK_STRING("   [-threads_schedtype]      - scheduling type of mediasdk task threads\n"));
@@ -206,7 +207,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
 
             pParams->bWallNoTitle = 0 == nTitle;
 
-            msdk_opt_read(strInput[++i], pParams->nWallTimeout);
+            msdk_opt_read(strInput[++i], pParams->nTimeout);
         }
 #endif
 #if defined(LIBVA_SUPPORT)
@@ -338,6 +339,20 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-timeout")))
+        {
+            if(i + 1 >= nArgNum)
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for -timeout key"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->nTimeout))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("timeout is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-di")))
         {
             if(i + 1 >= nArgNum)
@@ -553,7 +568,10 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 if (++i < nArgNum) {
                    if (MFX_ERR_NONE == ConvertStringToGuid(strInput[i], pParams->pluginParams.pluginGuid))
                     {
-                        pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_GUID;
+                        if(pParams->pluginParams.type != MFX_PLUGINLOAD_TYPE_FILE)
+                        {
+                            pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_GUID;
+                        }
                     }
                     else
                     {
@@ -627,7 +645,8 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         MFX_CODEC_VC1     != pParams->videoType &&
         MFX_CODEC_JPEG    != pParams->videoType &&
         MFX_CODEC_CAPTURE != pParams->videoType &&
-        CODEC_VP8         != pParams->videoType)
+        MFX_CODEC_VP8     != pParams->videoType &&
+        MFX_CODEC_VP9     != pParams->videoType)
     {
         PrintHelp(strInput[0], MSDK_STRING("Unknown codec"));
         return MFX_ERR_UNSUPPORTED;
@@ -659,7 +678,7 @@ int main(int argc, char *argv[])
         Pipeline.SetMultiView();
 
     sts = Pipeline.Init(&Params);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+    MSDK_CHECK_STATUS(sts, "Pipeline.Init failed");
 
     // print stream info
     Pipeline.PrintInfo();
@@ -680,16 +699,16 @@ int main(int argc, char *argv[])
             {
                 msdk_printf(MSDK_STRING("\nERROR: Hardware device was lost or returned unexpected error. Recovering...\n"));
                 sts = Pipeline.ResetDevice();
-                MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+                MSDK_CHECK_STATUS(sts, "Pipeline.ResetDevice failed");
             }
 
             sts = Pipeline.ResetDecoder(&Params);
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+            MSDK_CHECK_STATUS(sts, "Pipeline.ResetDecoder failed");
             continue;
         }
         else
         {
-            MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, 1);
+            MSDK_CHECK_STATUS(sts, "Pipeline.RunDecoding failed");
             break;
         }
     }

@@ -39,6 +39,7 @@ public:
     virtual void Close();
     virtual mfxStatus ResetMFXComponents(sInputParams* pParams);
     virtual void PrintInfo();
+    virtual mfxStatus FillBuffers();
 
 protected:
     msdk_so_handle          m_PluginModule;

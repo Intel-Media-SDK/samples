@@ -39,7 +39,7 @@ struct sFrame
 struct SysMemAllocatorParams : mfxAllocatorParams
 {
     SysMemAllocatorParams()
-        : mfxAllocatorParams() { }
+        : mfxAllocatorParams(), pBufferAllocator(NULL) { }
     MFXBufferAllocator *pBufferAllocator;
 };
 

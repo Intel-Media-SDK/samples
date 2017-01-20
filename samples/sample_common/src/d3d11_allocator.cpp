@@ -147,7 +147,13 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
                 DXGI_FORMAT_R16_UNORM != desc.Format &&
                 DXGI_FORMAT_R10G10B10A2_UNORM != desc.Format &&
                 DXGI_FORMAT_R16G16B16A16_UNORM != desc.Format &&
-                DXGI_FORMAT_AYUV != desc.Format)
+                DXGI_FORMAT_P010 != desc.Format &&
+                DXGI_FORMAT_AYUV != desc.Format
+#ifdef FUTURE_API
+                && DXGI_FORMAT_Y210 != desc.Format &&
+                DXGI_FORMAT_Y410 != desc.Format
+#endif
+)
             {
                 return MFX_ERR_LOCK_MEMORY;
             }
@@ -179,12 +185,12 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
 
     switch (desc.Format)
     {
+        case DXGI_FORMAT_P010:
         case DXGI_FORMAT_NV12:
             ptr->Pitch = (mfxU16)lockedRect.RowPitch;
             ptr->Y = (mfxU8 *)lockedRect.pData;
             ptr->U = (mfxU8 *)lockedRect.pData + desc.Height * lockedRect.RowPitch;
-            ptr->V = ptr->U + 1;
-
+            ptr->V = (desc.Format == DXGI_FORMAT_P010) ? ptr->U + 2 : ptr->U + 1;
             break;
 
         case DXGI_FORMAT_420_OPAQUE: // can be unsupported by standard ms guid
@@ -244,7 +250,26 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
             ptr->V16 = 0;
 
             break;
+#ifdef FUTURE_API
+        case DXGI_FORMAT_Y210:
+            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
+            ptr->PitchLow  = (mfxU16)(lockedRect.RowPitch % (1 << 16));
+            ptr->Y16 = (mfxU16 *)lockedRect.pData;
+            ptr->U16 = ptr->Y16 + 1;
+            ptr->V16 = ptr->Y16 + 3;
 
+            break;
+
+        case DXGI_FORMAT_Y410:
+            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
+            ptr->PitchLow  = (mfxU16)(lockedRect.RowPitch % (1 << 16));
+            ptr->Y410 = (mfxY410 *)lockedRect.pData;
+            ptr->Y = 0;
+            ptr->V = 0;
+            ptr->A = 0;
+
+            break;
+#endif
         default:
 
             return MFX_ERR_LOCK_MEMORY;
@@ -406,6 +431,12 @@ mfxStatus D3D11FrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
             desc.BindFlags = D3D11_BIND_RENDER_TARGET;
             if (desc.ArraySize > 2)
                 return MFX_ERR_MEMORY_ALLOC;
+        }
+
+        if(request->Type&MFX_MEMTYPE_SHARED_RESOURCE)
+        {
+            desc.BindFlags |= D3D11_BIND_SHADER_RESOURCE;
+            desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
         }
 
         if( DXGI_FORMAT_P8 == desc.Format )

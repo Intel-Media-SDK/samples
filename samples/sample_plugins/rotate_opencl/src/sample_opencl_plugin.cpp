@@ -45,7 +45,8 @@ Rotate::Rotate() :
     m_MaxNumTasks(0),
     m_pAlloc(NULL),
     m_pChunks(NULL),
-    m_NumChunks(0)
+    m_NumChunks(0),
+    m_impl(0)
 {
     memset(&m_VideoParam, 0, sizeof(m_VideoParam));
     memset(&m_Param, 0, sizeof(m_Param));
@@ -73,7 +74,7 @@ mfxStatus Rotate::PluginInit(mfxCoreInterface *core)
     *m_pmfxCore = *core;
     mfxCoreParam par = {0};
     sts = m_pmfxCore->GetCoreParam(m_pmfxCore->pthis, &par);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxCore->GetCoreParam failed");
     m_impl = par.Impl;
 
     mfxHDL hdl = 0;
@@ -92,7 +93,7 @@ mfxStatus Rotate::PluginInit(mfxCoreInterface *core)
 
     // SW lib is used if GetHandle return MFX_ERR_NOT_FOUND
     MSDK_IGNORE_MFX_STS(sts, MFX_ERR_NOT_FOUND);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "m_pmfxCore->GetHandle failed");
 
     // if external allocator not set use the one from core interface
     if (!m_pAlloc && m_pmfxCore->FrameAllocator.pthis)
@@ -130,14 +131,14 @@ mfxStatus Rotate::PluginClose()
     {
         sts = m_pmfxCore->UnmapOpaqueSurface(m_pmfxCore->pthis, pluginOpaqueAlloc->In.NumSurface,
             pluginOpaqueAlloc->In.Type, pluginOpaqueAlloc->In.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_pmfxCore->UnmapOpaqueSurface failed");
     }
 
     if (m_bIsOutOpaque)
     {
         sts = m_pmfxCore->UnmapOpaqueSurface(m_pmfxCore->pthis, pluginOpaqueAlloc->Out.NumSurface,
             pluginOpaqueAlloc->Out.Type, pluginOpaqueAlloc->Out.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_pmfxCore->UnmapOpaqueSurface failed");
     }
     MSDK_SAFE_DELETE(m_pmfxCore);
 
@@ -176,18 +177,18 @@ mfxStatus Rotate::Submit(const mfxHDL *in, mfxU32 in_num, const mfxHDL *out, mfx
     if (m_bIsInOpaque)
     {
         sts = m_pmfxCore->GetRealSurface(m_pmfxCore->pthis, surface_in, &real_surface_in);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_pmfxCore->GetRealSurface failed");
     }
 
     if (m_bIsOutOpaque)
     {
         sts = m_pmfxCore->GetRealSurface(m_pmfxCore->pthis, surface_out, &real_surface_out);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_pmfxCore->GetRealSurface failed");
     }
 
     // check validity of parameters
     sts = CheckInOutFrameInfo(&real_surface_in->Info, &real_surface_out->Info);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CheckInOutFrameInfo failed");
 
     mfxU32 ind = FindFreeTaskIdx();
 
@@ -240,7 +241,7 @@ mfxStatus Rotate::Execute(mfxThreadTask task, mfxU32 uid_p, mfxU32 uid_a)
     {
         // there's data to process
         sts = current_task->pProcessor->Process(&m_pChunks[uid_a]);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+        MSDK_CHECK_STATUS(sts, "current_task->pProcessor->Process failed");
     }
 
     return MFX_TASK_DONE;
@@ -294,7 +295,7 @@ mfxStatus Rotate::Init(mfxVideoParam *mfxParam)
     {
         sts = m_pmfxCore->MapOpaqueSurface(m_pmfxCore->pthis, pluginOpaqueAlloc->In.NumSurface,
             pluginOpaqueAlloc->In.Type, pluginOpaqueAlloc->In.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_pmfxCore->MapOpaqueSurface failed");
 
         bd3d[0] = pluginOpaqueAlloc->In.Type &
             (MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET | MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET);
@@ -308,7 +309,7 @@ mfxStatus Rotate::Init(mfxVideoParam *mfxParam)
     {
         sts = m_pmfxCore->MapOpaqueSurface(m_pmfxCore->pthis, pluginOpaqueAlloc->Out.NumSurface,
             pluginOpaqueAlloc->Out.Type, pluginOpaqueAlloc->Out.Surfaces);
-        MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, MFX_ERR_MEMORY_ALLOC);
+        MSDK_CHECK_STATUS(sts, "m_pmfxCore->MapOpaqueSurface failed");
 
         bd3d[1] = pluginOpaqueAlloc->Out.Type &
             (MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET | MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET);
@@ -411,7 +412,7 @@ mfxStatus Rotate::SetAuxParams(void* auxParam, int auxParamSize)
     MSDK_CHECK_POINTER(pRotatePar, MFX_ERR_NULL_PTR);
     // check validity of parameters
     mfxStatus sts = CheckParam(&m_VideoParam, pRotatePar);
-    MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+    MSDK_CHECK_STATUS(sts, "CheckParam failed");
 
     m_Param = *pRotatePar;
     return MFX_ERR_NONE;
@@ -537,11 +538,9 @@ mfxStatus Processor::Init(mfxFrameSurface1 *frame_in, mfxFrameSurface1 *frame_ou
 mfxStatus Processor::LockFrame(mfxFrameSurface1 *frame)
 {
     MSDK_CHECK_POINTER(frame, MFX_ERR_NULL_PTR);
-    //double lock impossible
-    if (frame->Data.Y != 0 && frame->Data.MemId !=0)
-        return MFX_ERR_UNSUPPORTED;
+
     //no allocator used, no need to do lock
-    if (frame->Data.Y != 0)
+    if (frame->Data.Y != 0 && !frame->Data.MemId)
         return MFX_ERR_NONE;
     //lock required
     MSDK_CHECK_POINTER(m_pAlloc, MFX_ERR_NULL_PTR);

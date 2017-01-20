@@ -44,6 +44,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "mfxplugin++.h"
 #include "mfxvideo.h"
 #include "mfxvideo++.h"
+#include "mfxvp8.h"
 
 #include "plugin_loader.h"
 #include "general_allocator.h"
@@ -70,16 +71,17 @@ struct sInputParams
     bool    bLowLat; // low latency mode
     bool    bCalLat; // latency calculation
     bool    bUseFullColorRange; //whether to use full color range
-    mfxU32  nMaxFPS; //rendering limited by certain fps
+    mfxU16  nMaxFPS; //rendering limited by certain fps
     mfxU32  nWallCell;
     mfxU32  nWallW; //number of windows located in each row
     mfxU32  nWallH; //number of windows located in each column
     mfxU32  nWallMonitor; //monitor id, 0,1,.. etc
     bool    bWallNoTitle; //whether to show title for each window with fps value
-    mfxU32  nWallTimeout; //timeout for -wall option
+
     mfxU32  numViews; // number of views for Multi-View Codec
     mfxU32  nRotation; // rotation for Motion JPEG Codec
     mfxU16  nAsyncDepth; // asyncronous queue
+    mfxU16  nTimeout; // timeout in seconds
     mfxU16  gpuCopy; // GPU Copy mode (three-state option)
     mfxU16  nThreadsNum;
     mfxI32  SchedulingType;
@@ -253,13 +255,16 @@ protected: // variables
     mfxU16                  m_vppOutHeight;
 
     mfxU32                  m_nTimeout; // enables timeout for video playback, measured in seconds
-    mfxU32                  m_nMaxFps; // limit of fps, if isn't specified equal 0.
+    mfxU16                  m_nMaxFps; // limit of fps, if isn't specified equal 0.
     mfxU32                  m_nFrames; //limit number of output frames
 
     mfxU16                  m_diMode;
     bool                    m_bVppIsUsed;
     bool                    m_bVppFullColorRange;
     std::vector<msdk_tick>  m_vLatency;
+
+    msdk_tick               m_startTick;
+    msdk_tick               m_delayTicks;
 
     mfxExtVPPDoNotUse       m_VppDoNotUse;      // for disabling VPP algorithms
     mfxExtVPPDeinterlacing  m_VppDeinterlacing;
@@ -288,6 +293,8 @@ protected: // variables
     bool                    m_bPerfMode;
 #endif // defined(MFX_LIBVA_SUPPORT)
 
+    bool                    m_bResetFileWriter;
+    bool                    m_bResetFileReader;
 private:
     CDecodingPipeline(const CDecodingPipeline&);
     void operator=(const CDecodingPipeline&);

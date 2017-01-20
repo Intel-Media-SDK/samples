@@ -30,11 +30,12 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #define VAAPI_X_DEFAULT_DISPLAY ":0.0"
 
 const char* PROCESSING_DRIVER_NAME="iHD";
-const char* RENDERING_DRIVER_NAME="i965";
+const char* RENDERING_DRIVER_NAME="iHD";
 
 X11LibVA::X11LibVA(void)
     : CLibVA(MFX_LIBVA_X11)
     , m_display(0)
+    , m_contextID(VA_INVALID_ID)
 {
     VAStatus va_res = VA_STATUS_SUCCESS;
     mfxStatus sts = MFX_ERR_NONE;
@@ -78,7 +79,35 @@ X11LibVA::X11LibVA(void)
         {
         if (!msdk_strcmp(PROCESSING_DRIVER_NAME, RENDERING_DRIVER_NAME)) {
             // same driver
+            VAStatus        va_res        = VA_STATUS_SUCCESS;
+            VAConfigID      vpp_config_id = VA_INVALID_ID;
+            VAConfigAttrib  cfgAttrib;
+
             m_va_dpy_render = m_va_dpy;
+
+            cfgAttrib.type = VAConfigAttribRTFormat;
+            m_libva.vaGetConfigAttributes(m_va_dpy_render,
+                                          VAProfileNone,
+                                          VAEntrypointVideoProc,
+                                          &cfgAttrib,
+                                          1);
+
+            va_res = m_libva.vaCreateConfig(m_va_dpy_render,
+                                            VAProfileNone,
+                                            VAEntrypointVideoProc,
+                                            &cfgAttrib,
+                                            1,
+                                            &vpp_config_id);
+
+            /* Create a context for VPP pipe */
+            va_res = m_libva.vaCreateContext(m_va_dpy_render,
+                                             vpp_config_id,
+                                             0,
+                                             0,
+                                             VA_PROGRESSIVE,
+                                             0,
+                                             0,
+                                             &m_contextID);
         } else {
             m_va_dpy_render = m_vax11lib.vaGetDisplay(m_display);
             if (!m_va_dpy_render)
@@ -140,6 +169,16 @@ X11LibVA::X11LibVA(void)
 
 X11LibVA::~X11LibVA(void)
 {
+    if (!msdk_strcmp(PROCESSING_DRIVER_NAME, RENDERING_DRIVER_NAME))
+    {
+        //release context
+        if (m_contextID != VA_INVALID_ID)
+        {
+            m_libva.vaDestroyContext(m_va_dpy_render, m_contextID);
+            m_contextID = VA_INVALID_ID;
+        }
+    }
+
 #if !defined(X11_DRI3_SUPPORT)
     if (m_va_dpy_render && (m_va_dpy_render != m_va_dpy))
     {

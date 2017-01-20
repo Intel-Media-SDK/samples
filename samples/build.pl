@@ -55,7 +55,7 @@ my $enable_v4l2 = "no";
 my $enable_mondello = "no";
 my $enable_ffmpeg = "yes";
 my $enable_opencl = "yes";
-
+my $prefix = "";
 my $test  = "";
 my $verb  = "";
 
@@ -121,6 +121,7 @@ sub usage {
   print "\t--enable-mondello=yes|no - enable MOndello/v4l2 support [default: $enable_mondello]\n";
   print "\t--enable-ffmpeg=yes|no  - build ffmpeg dependent targets [default: $enable_ffmpeg]\n";
   print "\t--enable-opencl=yes|no  - build OpenCL dependent targets [default: $enable_opencl]\n";
+  print "\t--prefix=PATH - set install prefix\n";
   print "\n";
   print "Examples:\n";
   print "\tperl build.pl --cmake=intel64.make.debug                 [ only generate projects    ]\n";
@@ -150,7 +151,8 @@ GetOptions (
   '--enable-v4l2=s' => \$enable_v4l2,
   '--enable-mondello=s' => \$enable_mondello,
   '--enable-ffmpeg=s' => \$enable_ffmpeg,
-  '--enable-opencl=s' => \$enable_opencl
+  '--enable-opencl=s' => \$enable_opencl,
+  '--prefix=s' => \$prefix
 );
 
 (
@@ -206,6 +208,8 @@ $cmake_cmd_gen.= "-DENABLE_V4L2:STRING=" . (($enable_v4l2 eq "yes") ? "ON": "OFF
 $cmake_cmd_gen.= "-DENABLE_MONDELLO:STRING=" . (($enable_mondello eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_FFMPEG:STRING=" . (($enable_ffmpeg eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_OPENCL:STRING=" . (($enable_opencl eq "yes") ? "ON": "OFF") . " ";
+
+$cmake_cmd_gen.= "-DCMAKE_INSTALL_PREFIX=$prefix " if $prefix ne "";
 
 my $mfx_home_abs = "";
 

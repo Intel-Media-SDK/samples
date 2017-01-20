@@ -26,6 +26,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <d3d9.h>
 #include <dxva2api.h>
 #include "base_allocator.h"
+#include <vector>
 
 enum eTypeHandle
 {
@@ -67,6 +68,10 @@ protected:
     virtual mfxStatus CheckRequestType(mfxFrameAllocRequest *request);
     virtual mfxStatus ReleaseResponse(mfxFrameAllocResponse *response);
     virtual mfxStatus AllocImpl(mfxFrameAllocRequest *request, mfxFrameAllocResponse *response);
+
+    void DeallocateMids(mfxHDLPair** pairs, int n);
+
+    std::vector<mfxHDLPair**> m_midsAllocated;
 
     CComPtr<IDirect3DDeviceManager9> m_manager;
     CComPtr<IDirectXVideoDecoderService> m_decoderService;

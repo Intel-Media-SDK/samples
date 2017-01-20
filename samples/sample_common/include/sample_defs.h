@@ -21,6 +21,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #define __SAMPLE_DEFS_H__
 
 #include <memory.h>
+#include <iostream>
 
 #include "mfxdefs.h"
 #include "vm/strings_defs.h"
@@ -107,7 +108,8 @@ enum LibVABackend
 
 #define MSDK_MAX_FILENAME_LEN 1024
 
-#define MSDK_PRINT_RET_MSG(ERR) {msdk_printf(MSDK_STRING("\nReturn on error: error code %d,\t%s\t%d\n\n"), (int)ERR, MSDK_STRING(__FILE__), __LINE__);}
+#define MSDK_PRINT_RET_MSG(ERR,MSG) {msdk_stringstream tmpStr22;tmpStr22<<std::endl<<"[ERROR], sts=" \
+    <<StatusToString(ERR)<<"("<<ERR<<")"<<", "<<__FUNCTION__<<", "<<MSG<<" at "<<__FILE__<<":"<<__LINE__<<std::endl;msdk_err<<tmpStr22.str();}
 
 #define MSDK_TRACE_LEVEL(level, ERR) if (level <= msdk_trace_get_level()) {msdk_err<<NoFullPath(MSDK_STRING(__FILE__)) << MSDK_STRING(" :")<< __LINE__ <<MSDK_STRING(" [") \
     <<level<<MSDK_STRING("] ") << ERR << std::endl;}
@@ -118,13 +120,18 @@ enum LibVABackend
 #define MSDK_TRACE_INFO(ERR) MSDK_TRACE_LEVEL(MSDK_TRACE_LEVEL_INFO, ERR)
 #define MSDK_TRACE_DEBUG(ERR) MSDK_TRACE_LEVEL(MSDK_TRACE_LEVEL_DEBUG, ERR)
 
-#define MSDK_CHECK_ERROR(P, X, ERR)              {if ((X) == (P)) {MSDK_PRINT_RET_MSG(ERR); return ERR;}}
-#define MSDK_CHECK_NOT_EQUAL(P, X, ERR)          {if ((X) != (P)) {MSDK_PRINT_RET_MSG(ERR); return ERR;}}
-#define MSDK_CHECK_RESULT(P, X, ERR)             {if ((X) > (P)) {MSDK_PRINT_RET_MSG(ERR); return ERR;}}
+#define MSDK_CHECK_ERROR(P, X, ERR)              {if ((X) == (P)) {msdk_stringstream tmpStr22;tmpStr22<<MSDK_STRING(#X)<<MSDK_STRING("==")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
+    MSDK_PRINT_RET_MSG(ERR, tmpStr22.str().c_str()); return ERR;}}
+
+#define MSDK_CHECK_NOT_EQUAL(P, X, ERR)          {if ((X) != (P)) {msdk_stringstream tmpStr22;tmpStr22<<MSDK_STRING(#X)<<MSDK_STRING("!=")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
+    MSDK_PRINT_RET_MSG(ERR, tmpStr22.str().c_str()); return ERR;}}
+
+#define MSDK_CHECK_STATUS(X, MSG)               {if ((X) < MFX_ERR_NONE) {MSDK_PRINT_RET_MSG(X, MSG); return X;}}
 #define MSDK_CHECK_PARSE_RESULT(P, X, ERR)       {if ((X) > (P)) {return ERR;}}
-#define MSDK_CHECK_RESULT_SAFE(P, X, ERR, ADD)   {if ((X) > (P)) {ADD; MSDK_PRINT_RET_MSG(ERR); return ERR;}}
+
+#define MSDK_CHECK_STATUS_SAFE(X, FUNC, ADD)     {if ((X) < MFX_ERR_NONE) {ADD; MSDK_PRINT_RET_MSG(X, FUNC); return X;}}
 #define MSDK_IGNORE_MFX_STS(P, X)                {if ((X) == (P)) {P = MFX_ERR_NONE;}}
-#define MSDK_CHECK_POINTER(P, ...)               {if (!(P)) {return __VA_ARGS__;}}
+#define MSDK_CHECK_POINTER(P, ...)               {if (!(P)) {msdk_stringstream tmpStr22;tmpStr22<<MSDK_STRING(#P)<<MSDK_STRING(" pointer is NULL");MSDK_PRINT_RET_MSG(MFX_ERR_NULL_PTR, tmpStr22.str().c_str());return __VA_ARGS__;}}
 #define MSDK_CHECK_POINTER_NO_RET(P)             {if (!(P)) {return;}}
 #define MSDK_CHECK_POINTER_SAFE(P, ERR, ADD)     {if (!(P)) {ADD; return ERR;}}
 #define MSDK_BREAK_ON_ERROR(P)                   {if (MFX_ERR_NONE != (P)) break;}
@@ -156,4 +163,10 @@ enum LibVABackend
 
 #define MFX_IMPL_VIA_MASK(x) (0x0f00 & (x))
 
+// Deprecated
+#define MSDK_PRINT_RET_MSG_(ERR) {msdk_printf(MSDK_STRING("\nReturn on error: error code %d,\t%s\t%d\n\n"), (int)ERR, MSDK_STRING(__FILE__), __LINE__);}
+#define MSDK_CHECK_RESULT(P, X, ERR)             {if ((X) > (P)) {MSDK_PRINT_RET_MSG_(ERR); return ERR;}}
+#define MSDK_CHECK_RESULT_SAFE(P, X, ERR, ADD)   {if ((X) > (P)) {ADD; MSDK_PRINT_RET_MSG_(ERR); return ERR;}}
+
 #endif //__SAMPLE_DEFS_H__
+

@@ -504,8 +504,6 @@ mfxStatus CmdProcessor::ParseParFile(FILE *parFile)
         sts = TokenizeLine(pCur, currPos);
         MSDK_CHECK_STATUS(sts, "TokenizeLine failed");
 
-        // save original cmd line for debug purposes
-        m_lines.push_back(msdk_string(pCur, currPos));
         currPos = 0;
         lineIndex++;
     }

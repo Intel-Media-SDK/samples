@@ -1,5 +1,5 @@
 ##******************************************************************************
-##  Copyright(C) 2014-2015 Intel Corporation. All Rights Reserved.
+##  Copyright(C) 2014-2017 Intel Corporation. All Rights Reserved.
 ##
 ##  The source code, information  and  material ("Material") contained herein is
 ##  owned  by Intel Corporation or its suppliers or licensors, and title to such
@@ -42,6 +42,6 @@ endif()
 
 if ( NOT DEFINED OPENCL_FOUND )
     message( STATUS "OpenCL was not found (optional). The following will not be built: rotate_opencl plugin.")
-else ( )
+else ()
     message( STATUS "OpenCL was found here: ${OPENCL_LIBRARY_PATH} and ${OPENCL_INCLUDE}" )
 endif()

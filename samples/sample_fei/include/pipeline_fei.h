@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -34,13 +34,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "mfx_itt_trace.h"
 
-// Extensions for internal use, normally these macros are blank
-#ifdef MOD_FEI
-#include "extension_macros.h"
-#else
-    #define MSDK_DEBUG
-#endif
-
 /* This class implements a FEI pipeline */
 class CEncodingPipeline
 {
@@ -62,8 +55,8 @@ public:
 protected:
     AppConfig   m_appCfg; // this structure holds information about current pipeline setup
 
-    iTaskPool   m_inputTasks; // pool of input tasks, used for reordering and reflists mnagement
-    iTaskParams m_taskInitializationParams; // holds all necessery data for task initializing
+    iTaskPool   m_inputTasks; // pool of input tasks, used for reordering and reflists management
+    iTaskParams m_taskInitializationParams; // holds all necessary data for task initializing
 
     mfxU16 m_nAsyncDepth; // depth of asynchronous pipeline (FEI supports only AsyncDepth = 1 fro current limitations)
     mfxU16 m_picStruct;
@@ -85,12 +78,13 @@ protected:
 
     mfxU16 m_maxQueueLength;
     mfxU16 m_log2frameNumMax;
-    mfxU32 m_frameCount, m_frameOrderIdrInDisplayOrder;
+    mfxU32 m_frameCount;
+    mfxU32 m_frameOrderIdrInDisplayOrder;
     PairU8 m_frameType;
 
     mfxFrameInfo m_commonFrameInfo; // setting for ENCODE (VPP / PreENC with DS may have own FrameInfo settings)
 
-    bufList m_preencBufs, m_encodeBufs; // sets of extended buffers for PreENC and ENCODE(ENC+PAK)
+    bufList m_preencBufs, m_encodeBufs; // sets of extension buffers for PreENC and ENCODE(ENC+PAK)
 
     // decode streamout
     std::vector<mfxExtFeiDecStreamOut*> m_StreamoutBufs;
@@ -98,7 +92,7 @@ protected:
 
     // Dynamic Resolution Change workflow
     mfxU32 m_nDRC_idx;
-    bool m_bNeedDRC;   //True if Dynamic Resolution Change requied
+    bool m_bNeedDRC;   //True if Dynamic Resolution Change required
     std::vector<DRCblock> m_DRCqueue;
 
     bool m_insertIDR; // indicates forced-IDR
@@ -138,7 +132,6 @@ protected:
     mfxFrameAllocResponse m_EncResponse;    // memory allocation response for encoder
     mfxFrameAllocResponse m_ReconResponse;  // memory allocation response for encoder for reconstructed surfaces [FEI]
     mfxU32 m_BaseAllocID;
-    mfxU32 m_EncPakReconAllocID;
 
 
     virtual mfxStatus AllocExtBuffers();

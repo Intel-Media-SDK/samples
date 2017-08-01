@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -32,5 +32,6 @@ typedef std::basic_string<msdk_char> msdk_string;
 typedef std::basic_stringstream<msdk_char> msdk_stringstream;
 typedef std::basic_ostream<msdk_char, std::char_traits<msdk_char> > msdk_ostream;
 typedef std::basic_istream<msdk_char, std::char_traits<msdk_char> > msdk_istream;
+typedef std::basic_fstream<msdk_char, std::char_traits<msdk_char> > msdk_fstream;
 
 #endif //__SAMPLE_TYPES_H__

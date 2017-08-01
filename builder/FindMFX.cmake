@@ -1,6 +1,6 @@
 ##******************************************************************************
-##  Copyright(C) 2012-2015 Intel Corporation. All Rights Reserved.
-##  
+##  Copyright(C) 2012 Intel Corporation. All Rights Reserved.
+##
 ##  The source code, information  and  material ("Material") contained herein is
 ##  owned  by Intel Corporation or its suppliers or licensors, and title to such
 ##  Material remains  with Intel Corporation  or its suppliers or licensors. The
@@ -29,49 +29,51 @@ if( Linux )
   set( os_arch "lin" )
 elseif( Darwin )
   set( os_arch "darwin" )
+elseif( Windows )
+  set( os_arch "win" )
 endif()
+
 if( __ARCH MATCHES ia32)
   set( os_arch "${os_arch}_ia32" )
-else( )
+else()
   set( os_arch "${os_arch}_x64" )
-endif( )
+endif()
 
-if( Linux OR Darwin )
-  if(CMAKE_MFX_HOME)
-    set( MFX_API_HOME ${CMAKE_MFX_HOME} )
-  else()
-    set( MFX_API_HOME $ENV{MFX_HOME} )
-  endif()
-  find_path( MFX_INCLUDE mfxdefs.h PATHS ${MFX_API_HOME} PATH_SUFFIXES include )
-  find_library ( MFX_LIBRARY libmfx.a PATHS ${MFX_API_HOME}/lib PATH_SUFFIXES ${os_arch} )
+if( CMAKE_MFX_HOME )
+  set( MFX_API_HOME ${CMAKE_MFX_HOME} )
+else()
+  set( MFX_API_HOME $ENV{MFX_HOME} )
+endif()
 
-  # required:
-  include_directories( ${MFX_API_HOME}/include )
-  link_directories( ${MFX_API_HOME}/lib/${os_arch} )
+find_path( MFX_INCLUDE mfxdefs.h PATHS ${MFX_API_HOME}/include )
+find_library( MFX_LIBRARY libmfx.a PATHS ${MFX_API_HOME}/lib PATH_SUFFIXES ${os_arch} )
 
-else( )
-  set( MFX_INCLUDE NOTFOUND )
-  set( MFX_LIBRARY NOTFOUND )
+if( NOT MFX_INCLUDE MATCHES NOTFOUND )
+  include_directories( ${MFX_API_HOME}/mediasdk_structures )
+  include_directories( ${MFX_INCLUDE} )
+endif()
 
-endif( )
+if( NOT MFX_LIBRARY MATCHES NOTFOUND )
+  get_filename_component( MFX_LIBRARY_PATH ${MFX_LIBRARY} PATH )
+  link_directories( ${MFX_LIBRARY_PATH} )
+endif()
 
-if(NOT MFX_INCLUDE MATCHES NOTFOUND)
+if( NOT MFX_INCLUDE MATCHES NOTFOUND )
   set( MFX_FOUND TRUE )
   include_directories( ${MFX_INCLUDE} )
-endif( )
+endif()
 
-if(NOT DEFINED MFX_FOUND)
-  message( FATAL_ERROR "Intel(R) Media SDK was not found in ${MFX_API_HOME} (${MFX_INCLUDE}, ${MFX_LIBRARY} required)! Set/check MFX_HOME environment variable!")
-else ( )
-  message( STATUS "Intel(R) Media SDK ${MFX_INCLUDE}, ${MFX_LIBRARY} was found here ${MFX_API_HOME}")
-endif( )
+if( NOT DEFINED MFX_FOUND )
+  message( FATAL_ERROR "Intel(R) Media SDK was not found (required)! Set/check MFX_HOME environment variable!")
+else()
+  message( STATUS "Intel(R) Media SDK was found here $ENV{MFX_HOME}")
+endif()
 
-if(NOT MFX_LIBRARY MATCHES NOTFOUND)
+if( NOT MFX_LIBRARY MATCHES NOTFOUND )
   get_filename_component(MFX_LIBRARY_PATH ${MFX_LIBRARY} PATH )
-  message( STATUS "Intel(R) Media SDK ${MFX_LIBRARY_PATH} will be used")
   link_directories( ${MFX_LIBRARY_PATH} )
-endif( )
+endif()
 
 if( Linux )
-  set(MFX_LDFLAGS "-Wl,--default-symver" )
-endif( )
+  set( MFX_LDFLAGS "-Wl,--default-symver" )
+endif()

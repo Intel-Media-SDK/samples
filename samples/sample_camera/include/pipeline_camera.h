@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -83,7 +83,7 @@ protected:
     mfxCam3DLutEntry*       m_3dlut_65;
     CBmpWriter*             m_pBmpWriter;
     CVideoReader*           m_pFileReader;
-    CRawVideoWriter*        m_pARGB16FileWriter;
+    CRawVideoWriter*        m_pRawFileWriter;
     mfxU32                  m_nInputFileIndex;
     mfxU32                  m_nFrameIndex; // index of processed frame
     mfxU32                  m_nFrameLimit; // limit number of frames to proceed
@@ -100,6 +100,10 @@ protected:
     mfxExtCamHotPixelRemoval      m_HP;
     mfxExtCamGammaCorrection      m_GammaCorrection;
     mfxExtCamFwdGamma             m_3DLUT_GammaCorrection;
+#if _MSDK_API >= MSDK_API(1, 23)
+    mfxExtCamTotalColorControl    m_TotalColorControl;
+    mfxExtCamCscYuvRgb             m_RGBToYUV;
+#endif
     mfxExtCamBlackLevelCorrection m_BlackLevelCorrection;
     mfxExtCamWhiteBalance         m_WhiteBalance;
     mfxExtCamColorCorrection3x3   m_CCM;
@@ -166,6 +170,10 @@ protected:
     virtual mfxStatus AllocAndInitCamWhiteBalance(sInputParams *pParams);
     virtual mfxStatus AllocAndInitCamCCM(sInputParams *pParams);
     virtual mfxStatus AllocAndInitCamLens(sInputParams *pParams);
+#if _MSDK_API >= MSDK_API(1, 23)
+    virtual mfxStatus AllocAndInitCamTotalColorControl(sInputParams *pParams);
+    virtual mfxStatus AllocAndInitCamRGBtoYUV(sInputParams *pParams);
+#endif
     virtual mfxStatus AllocAndInitCamBlackLevelCorrection(sInputParams *pParams);
     virtual mfxStatus AllocAndInitCamHotPixelRemoval(sInputParams *pParams);
     virtual void FreeCamGammaCorrection();

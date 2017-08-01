@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -194,7 +194,8 @@ struct sInputParams
     std::vector<msdk_tstring> strDstFiles;
 
     msdk_char  strPerfFile[MSDK_MAX_FILENAME_LEN];
-    bool  isOutYV12;
+    mfxU32  forcedOutputFourcc;
+    bool  isInI420;
 
     /* Use extended API (RunFrameVPPAsyncEx) */
     bool  use_extapi;
@@ -225,7 +226,8 @@ struct sInputParams
         ptsJump=false;
         ptsAdvanced=false;
         ptsFR=0;
-        isOutYV12=false;
+        forcedOutputFourcc=0;
+        isInI420 = false;
         numStreams=0;
 
         MSDK_ZERO_MEMORY(strPlgGuid);
@@ -300,7 +302,8 @@ public :
 
     mfxStatus  Init(
         const msdk_char *strFileName,
-        PTSMaker *pPTSMaker);
+        PTSMaker *pPTSMaker,
+        bool inI420 = false);
 
     mfxStatus  PreAllocateFrameChunk(
         mfxVideoParam* pVideoParam,
@@ -327,7 +330,7 @@ private:
     mfxU16                                m_Repeat;
 
     PTSMaker                             *m_pPTSMaker;
-
+    bool m_inI420;
 };
 
 class CRawVideoWriter
@@ -342,7 +345,7 @@ public :
     mfxStatus  Init(
         const msdk_char *strFileName,
         PTSMaker *pPTSMaker,
-        bool outYV12  = false);
+        mfxU32 forcedOutputFourcc = 0);
 
     mfxStatus  PutNextFrame(
         sMemoryAllocator* pAllocator,
@@ -356,8 +359,7 @@ private:
 
     FILE*      m_fDst;
     PTSMaker                              *m_pPTSMaker;
-    bool                                   m_outYV12;
-    std::auto_ptr<mfxU8>                   m_outSurfYV12;
+    mfxU32                                m_forcedOutputFourcc;
 };
 
 
@@ -374,7 +376,7 @@ public :
         const msdk_char *strFileName,
         PTSMaker *pPTSMaker,
         sSVCLayerDescr*  pDesc = NULL,
-        bool outYV12 = false);
+        mfxU32 forcedOutputFourcc=0);
 
     mfxStatus  PutNextFrame(
         sMemoryAllocator* pAllocator,

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -82,6 +82,12 @@ public:
         m_nRenderWinW=0;
         m_nRenderWinH=0;
         m_bRenderWin=false;
+#if defined(X11_DRI3_SUPPORT)
+        m_dri_fd = 0;
+        m_dpy = NULL;
+        m_bufmgr = NULL;
+        m_xcbconn = NULL;
+#endif
     }
     virtual ~CVAAPIDeviceX11(void);
 

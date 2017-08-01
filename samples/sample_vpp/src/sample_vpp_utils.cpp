@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -96,12 +96,8 @@ static
         return MSDK_STRING("UYVY");
     case MFX_FOURCC_AYUV:
         return MSDK_STRING("AYUV");
-#ifdef FUTURE_API
-    case MFX_FOURCC_Y210:
-        return MSDK_STRING("Y210");
-    case MFX_FOURCC_Y410:
-        return MSDK_STRING("Y410");
-#endif
+    case MFX_FOURCC_I420:
+        return MSDK_STRING("I420");
     default:
         return MSDK_STRING("Unknown");
     }
@@ -311,7 +307,7 @@ mfxStatus InitParamsVPP(mfxVideoParam* pParams, sInputParams* pInParams, mfxU32 
     pParams->vpp.In.CropY = pInParams->frameInfoIn[paramID].CropY;
     pParams->vpp.In.CropW = pInParams->frameInfoIn[paramID].CropW;
     pParams->vpp.In.CropH = pInParams->frameInfoIn[paramID].CropH;
-    pParams->vpp.In.Width = pInParams->frameInfoIn[paramID].nWidth;
+    pParams->vpp.In.Width = MSDK_ALIGN16(pInParams->frameInfoIn[paramID].nWidth);
     pParams->vpp.In.Height = (MFX_PICSTRUCT_PROGRESSIVE == pInParams->frameInfoIn[paramID].PicStruct)?
                 MSDK_ALIGN16(pInParams->frameInfoIn[paramID].nHeight) : MSDK_ALIGN32(pInParams->frameInfoIn[paramID].nHeight);
 
@@ -541,7 +537,7 @@ mfxStatus InitMemoryAllocator(
         }
         else if((pInParams->ImpLib & IMPL_VIA_MASK) == MFX_IMPL_VIA_D3D11)
         {
-#ifdef MFX_D3D11_SUPPORT
+#if MFX_D3D11_SUPPORT
             pAllocator->pDevice = new CD3D11Device();
 
             sts = pAllocator->pDevice->Init(0, 1, MSDKAdapter::GetNumber(pProcessor->mfxSession));
@@ -807,9 +803,10 @@ CRawVideoReader::CRawVideoReader()
     m_isPerfMode = false;
     m_Repeat = 0;
     m_pPTSMaker = 0;
+    m_inI420=false;
 }
 
-mfxStatus CRawVideoReader::Init(const msdk_char *strFileName, PTSMaker *pPTSMaker)
+mfxStatus CRawVideoReader::Init(const msdk_char *strFileName, PTSMaker *pPTSMaker, bool inI420)
 {
     Close();
 
@@ -819,6 +816,7 @@ mfxStatus CRawVideoReader::Init(const msdk_char *strFileName, PTSMaker *pPTSMake
     MSDK_CHECK_POINTER(m_fSrc, MFX_ERR_ABORTED);
 
     m_pPTSMaker = pPTSMaker;
+    m_inI420=inI420;
 
     return MFX_ERR_NONE;
 }
@@ -861,7 +859,7 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
 
     pitch = pData->Pitch;
 
-    if(pInfo->FourCC == MFX_FOURCC_YV12)
+    if(pInfo->FourCC == MFX_FOURCC_YV12 || pInfo->FourCC == MFX_FOURCC_I420)
     {
         ptr = pData->Y + pInfo->CropX + pInfo->CropY * pitch;
 
@@ -875,15 +873,15 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
         w     >>= 1;
         h     >>= 1;
         pitch >>= 1;
-        // load V
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load U/V
+        ptr = (pInfo->FourCC == MFX_FOURCC_I420 || m_inI420 ? pData->U : pData->V) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-        // load U
-        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load V/U
+        ptr  = (pInfo->FourCC == MFX_FOURCC_I420 || m_inI420 ? pData->V : pData->U) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -914,15 +912,15 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
 
         w /= 4;
 
-        // load V
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load U
+        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-        // load U
-        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load V
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -942,15 +940,15 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
 
         w     >>= 1;
 
-        // load V
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load U
+        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-        // load U
-        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load V
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -970,15 +968,15 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
 
         h     >>= 1;
 
-        // load V
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load U
+        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-        // load U
-        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load V
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -996,15 +994,15 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
 
-        // load V
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load U
+        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-        // load U
-        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load V
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -1154,15 +1152,15 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
 
         h     >>= 1;
 
-        // load V
-        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load U
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-        // load U
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        // load V
+        ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -1180,28 +1178,6 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
         }
     }
-#ifdef FUTURE_API
-    else if (pInfo->FourCC == MFX_FOURCC_Y210)
-    {
-        ptr = (mfxU8*)pData->Y16 + pInfo->CropX + pInfo->CropY * pitch;
-
-        for(i = 0; i < h; i++)
-        {
-            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
-            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
-        }
-    }
-    else if (pInfo->FourCC == MFX_FOURCC_Y410)
-    {
-        ptr = (mfxU8*)pData->Y410 + pInfo->CropX + pInfo->CropY * pitch;
-
-        for(i = 0; i < h; i++)
-        {
-            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
-            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
-        }
-    }
-#endif
     else
     {
         return MFX_ERR_UNSUPPORTED;
@@ -1294,6 +1270,7 @@ mfxStatus  CRawVideoReader::PreAllocateFrameChunk(mfxVideoParam* pVideoParam,
         surface.Data.Locked = 0;
         surface.Data.MemId = response.mids[m_SurfacesList.size()];
         surface.Info = pVideoParam->vpp.In;
+        memset(surface.reserved, 0, sizeof(surface.reserved));
         sts = pAllocator->Lock(pAllocator->pthis, surface.Data.MemId, &surface.Data);
         MFX_CHECK_STS(sts);
         sts = LoadNextFrame(&surface.Data, &pVideoParam->vpp.In);
@@ -1311,11 +1288,11 @@ CRawVideoWriter::CRawVideoWriter()
 {
     m_fDst = 0;
     m_pPTSMaker = 0;
-    m_outYV12 = false;
+    m_forcedOutputFourcc = 0;
     return;
 }
 
-mfxStatus CRawVideoWriter::Init(const msdk_char *strFileName, PTSMaker *pPTSMaker, bool outYV12 )
+mfxStatus CRawVideoWriter::Init(const msdk_char *strFileName, PTSMaker *pPTSMaker, mfxU32 forcedOutputFourcc)
 {
     Close();
 
@@ -1328,7 +1305,7 @@ mfxStatus CRawVideoWriter::Init(const msdk_char *strFileName, PTSMaker *pPTSMake
 
     MSDK_FOPEN(m_fDst,strFileName, MSDK_STRING("wb"));
     MSDK_CHECK_POINTER(m_fDst, MFX_ERR_ABORTED);
-    m_outYV12  = outYV12;
+    m_forcedOutputFourcc = forcedOutputFourcc;
 
     return MFX_ERR_NONE;
 }
@@ -1420,7 +1397,7 @@ mfxStatus CRawVideoWriter::WriteFrame(
 
     pitch = outData.Pitch;
 
-    if(pInfo->FourCC == MFX_FOURCC_YV12)
+    if(pInfo->FourCC == MFX_FOURCC_YV12 || pInfo->FourCC == MFX_FOURCC_I420)
     {
 
         ptr   = outData.Y + (pInfo->CropX ) + (pInfo->CropY ) * pitch;
@@ -1434,17 +1411,17 @@ mfxStatus CRawVideoWriter::WriteFrame(
         h     >>= 1;
         pitch >>= 1;
 
-        ptr  = outData.V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
-        ptr  = outData.U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        ptr  = (pInfo->FourCC == MFX_FOURCC_I420 ? outData.U : outData.V) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+        }
+
+        ptr  = (pInfo->FourCC == MFX_FOURCC_I420 ? outData.V : outData.U) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
     else if(pInfo->FourCC == MFX_FOURCC_YUV400)
@@ -1460,17 +1437,17 @@ mfxStatus CRawVideoWriter::WriteFrame(
         h     >>= 1;
         pitch >>= 1;
 
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
         ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+        }
+
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
     else if(pInfo->FourCC == MFX_FOURCC_YUV411)
@@ -1485,17 +1462,17 @@ mfxStatus CRawVideoWriter::WriteFrame(
         w     /= 4;
         //pitch /= 4;
 
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
         ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+        }
+
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
     else if(pInfo->FourCC == MFX_FOURCC_YUV422H)
@@ -1510,17 +1487,17 @@ mfxStatus CRawVideoWriter::WriteFrame(
         w     >>= 1;
         //pitch >>= 1;
 
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
         ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+        }
+
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
     else if(pInfo->FourCC == MFX_FOURCC_YUV422V)
@@ -1534,17 +1511,17 @@ mfxStatus CRawVideoWriter::WriteFrame(
 
         h     >>= 1;
 
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
         ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+        }
+
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
     else if(pInfo->FourCC == MFX_FOURCC_YUV444)
@@ -1556,65 +1533,94 @@ mfxStatus CRawVideoWriter::WriteFrame(
             MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
 
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
         ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
-    }
-    else if( pInfo->FourCC == MFX_FOURCC_NV12 && !m_outYV12)
-    {
-        ptr   = pData->Y + (pInfo->CropX ) + (pInfo->CropY ) * pitch;
 
-        for (i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
-        // write UV data
-        h     >>= 1;
-        ptr  = pData->UV + (pInfo->CropX ) + (pInfo->CropY >> 1) * pitch;
-
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
-    else if( pInfo->FourCC == MFX_FOURCC_NV12 && m_outYV12 )
+    else if (pInfo->FourCC == MFX_FOURCC_NV12)
     {
-        int j=0;
-        ptr   = pData->Y + (pInfo->CropX ) + (pInfo->CropY ) * pitch;
+        ptr = pData->Y + (pInfo->CropX) + (pInfo->CropY) * pitch;
 
         for (i = 0; i < h; i++)
         {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
+            MSDK_CHECK_NOT_EQUAL(fwrite(ptr + i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
 
-        // write V plane first, then U plane
-        h >>= 1;
-        w >>= 1;
-        ptr  = pData->UV + (pInfo->CropX ) + (pInfo->CropY >> 1) * pitch;
-
-        for(i = 0; i < h; i++)
+        switch (m_forcedOutputFourcc)
         {
-            for(j = 0; j < w; j++)
+        case MFX_FOURCC_I420:
+        {
+            int j = 0;
+
+            // write U plane first, then V plane
+            h >>= 1;
+            w >>= 1;
+            ptr = pData->UV + (pInfo->CropX) + (pInfo->CropY >> 1) * pitch;
+
+            for (i = 0; i < h; i++)
             {
-                fputc(ptr[i*pitch + j*2 + 1],  m_fDst);
+                for (j = 0; j < w; j++)
+                {
+                    fputc(ptr[i*pitch + j * 2], m_fDst);
+                }
+            }
+            for (i = 0; i < h; i++)
+            {
+                for (j = 0; j < w; j++)
+                {
+                    fputc(ptr[i*pitch + j * 2 + 1], m_fDst);
+                }
             }
         }
-        for(i = 0; i < h; i++)
+        break;
+
+        case MFX_FOURCC_YV12:
         {
-            for(j = 0; j < w; j++)
+            int j = 0;
+
+            // write V plane first, then U plane
+            h >>= 1;
+            w >>= 1;
+            ptr = pData->UV + (pInfo->CropX) + (pInfo->CropY >> 1) * pitch;
+
+            for (i = 0; i < h; i++)
             {
-                fputc(ptr[i*pitch + j*2],  m_fDst);
+                for (j = 0; j < w; j++)
+                {
+                    fputc(ptr[i*pitch + j * 2 + 1], m_fDst);
+                }
             }
+            for (i = 0; i < h; i++)
+            {
+                for (j = 0; j < w; j++)
+                {
+                    fputc(ptr[i*pitch + j * 2], m_fDst);
+                }
+            }
+        }
+        break;
+
+        default:
+        {
+            // write UV data
+            h >>= 1;
+            ptr = pData->UV + (pInfo->CropX) + (pInfo->CropY >> 1) * pitch;
+
+            for (i = 0; i < h; i++)
+            {
+                MSDK_CHECK_NOT_EQUAL(fwrite(ptr + i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
+            }
+        }
+        break;
         }
     }
     else if( pInfo->FourCC == MFX_FOURCC_NV16 )
@@ -1690,17 +1696,17 @@ mfxStatus CRawVideoWriter::WriteFrame(
         w     >>= 1;
         h     >>= 1;
 
-        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-
         ptr  = pData->U + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fwrite(ptr + i * pitch, 1, w, m_fDst);
             MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+        }
+
+        ptr  = pData->V + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, w, m_fDst), w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
     else if (pInfo->FourCC == MFX_FOURCC_RGB4 || pInfo->FourCC == MFX_FOURCC_A2RGB10)
@@ -1729,26 +1735,6 @@ mfxStatus CRawVideoWriter::WriteFrame(
             MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
-#ifdef FUTURE_API
-    else if( pInfo->FourCC == MFX_FOURCC_Y210)
-    {
-        ptr = pData->Y + pInfo->CropX + pInfo->CropY * pitch;
-
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-    }
-    else if (pInfo->FourCC == MFX_FOURCC_Y410)
-    {
-        ptr = (mfxU8*)pData->Y410 + pInfo->CropX + pInfo->CropY * pitch;
-
-        for(i = 0; i < h; i++)
-        {
-            MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
-        }
-    }
-#endif
     else
     {
         return MFX_ERR_UNSUPPORTED;
@@ -1784,9 +1770,9 @@ mfxStatus GeneralWriter::Init(
     const msdk_char *strFileName,
     PTSMaker *pPTSMaker,
     sSVCLayerDescr*  pDesc,
-    bool outYV12)
+    mfxU32 forcedOutputFourcc)
 {
-    mfxStatus sts = MFX_ERR_UNKNOWN;;
+    mfxStatus sts = MFX_ERR_UNKNOWN;
 
     mfxU32 didCount = (pDesc) ? 8 : 1;
     m_svcMode = (pDesc) ? true : false;
@@ -1821,7 +1807,8 @@ mfxStatus GeneralWriter::Init(
             }
 #else
             {
-                msdk_strcopy(fname,strFileName);
+                msdk_strncopy_s(fname, MSDK_MAX_FILENAME_LEN, strFileName, MSDK_MAX_FILENAME_LEN - 1);
+                fname[MSDK_MAX_FILENAME_LEN - 1] = 0;
                 char* pFound = strrchr(fname,'.');
                 if(pFound)
                 {
@@ -1834,7 +1821,7 @@ mfxStatus GeneralWriter::Init(
             sts = m_ofile[did]->Init(
                 (1 == didCount) ? strFileName : out_buf,
                 pPTSMaker,
-                outYV12);
+                forcedOutputFourcc);
 
             if(sts != MFX_ERR_NONE) break;
         }

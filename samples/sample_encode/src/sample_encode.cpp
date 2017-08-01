@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -25,6 +25,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "pipeline_region_encode.h"
 #include <stdarg.h>
 #include <string>
+#include "version.h"
 
 #define VAL_CHECK(val, argIdx, argName) \
 { \
@@ -35,8 +36,8 @@ or https://software.intel.com/en-us/media-client-solutions-support.
     } \
 }
 
-// Extensions for internal use, normally these macros are blank
 #ifdef MOD_ENC
+// Extensions for internal use, normally these macros are blank
 #include "extension_macros.h"
 #else
 #define MOD_ENC_CREATE_PIPELINE
@@ -46,7 +47,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
 {
-    msdk_printf(MSDK_STRING("Encoding Sample Version %s\n\n"), MSDK_SAMPLE_VERSION);
+    msdk_printf(MSDK_STRING("Encoding Sample Version %s\n\n"), GetMSDKSampleVersion().c_str());
 
     if (strErrorMessage)
     {
@@ -65,9 +66,11 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   <codecid>=h265                - in-box Media SDK plugins (may require separate downloading and installation)\n"));
     msdk_printf(MSDK_STRING("   If codecid is jpeg, -q option is mandatory.)\n"));
     msdk_printf(MSDK_STRING("Options: \n"));
+#ifdef MOD_ENC
     MOD_ENC_PRINT_HELP;
-    msdk_printf(MSDK_STRING("   [-nv12|yuy2|p010|rgb4] - input color format (by default YUV420 is expected). YUY2 is for JPEG encode only\n"));
-    msdk_printf(MSDK_STRING("   [-ec::p010] - force P010 surfaces for encoder. Use for 10 bit HEVC encoding\n"));
+#endif
+    msdk_printf(MSDK_STRING("   [-nv12|yuy2|p010|rgb4] - input color format (by default YUV420 is expected). YUY2 is for JPEG encode only.\n"));
+    msdk_printf(MSDK_STRING("   [-ec::p010] - force usage of P010 surfaces for encoder (conversion will be made if necessary). Use for 10 bit HEVC encoding\n"));
     msdk_printf(MSDK_STRING("   [-tff|bff] - input stream is interlaced, top|bottom fielf first, if not specified progressive is expected\n"));
     msdk_printf(MSDK_STRING("   [-bref] - arrange B frames in B pyramid reference structure\n"));
     msdk_printf(MSDK_STRING("   [-nobref] -  do not use B-pyramid (by default the decision is made by library)\n"));
@@ -104,6 +107,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-num_slice]             - number of slices in each video frame. 0 by default.\n"));
     msdk_printf(MSDK_STRING("                              If num_slice equals zero, the encoder may choose any slice partitioning allowed by the codec standard.\n"));
     msdk_printf(MSDK_STRING("   [-mss]                   - maximum slice size in bytes. Supported only with -hw and h264 codec. This option is not compatible with -num_slice option.\n"));
+    msdk_printf(MSDK_STRING("   [-mfs]                   - maximum frame size in bytes. Supported only with h264 and hevc codec for VBR mode.\n"));
     msdk_printf(MSDK_STRING("   [-re]                    - enable region encode mode. Works only with h265 encoder\n"));
     msdk_printf(MSDK_STRING("   [-CodecProfile]          - specifies codec profile\n"));
     msdk_printf(MSDK_STRING("   [-CodecLevel]            - specifies codec level\n"));
@@ -114,9 +118,12 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-BufferSizeInKB ]       - represents the maximum possible size of any compressed frames\n"));
     msdk_printf(MSDK_STRING("   [-MaxKbps ]              - for variable bitrate control, specifies the maximum bitrate at which \
                             the encoded data enters the Video Buffering Verifier buffer\n"));
+    msdk_printf(MSDK_STRING("   [-signal:tm ]            - represents transfer matrix coefficients for mfxExtVideoSignalInfo. 0 - unknown, 1 - BT709, 2 - BT601\n"));
+
     msdk_printf(MSDK_STRING("   [-timeout]               - encoding in cycle not less than specific time in seconds\n"));
     msdk_printf(MSDK_STRING("   [-membuf]                - size of memory buffer in frames\n"));
     msdk_printf(MSDK_STRING("   [-uncut]                 - do not cut output file in looped mode (in case of -timeout option)\n"));
+    msdk_printf(MSDK_STRING("   [-dump fileName]         - dump MSDK components configuration to the file in text form\n"));
 
     msdk_printf(MSDK_STRING("Example: %s h265 -i InputYUVFile -o OutputEncodedFile -w width -h height -hw -p 2fca99749fdb49aeb121a5b63ef568f7\n"), strAppName);
 #if D3D_SURFACES_SUPPORT
@@ -168,7 +175,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     pParams->bUseHWLib = true;
     pParams->isV4L2InputEnabled = false;
     pParams->nNumFrames = 0;
-    pParams->FileInputFourCC = MFX_FOURCC_YV12;
+    pParams->FileInputFourCC = MFX_FOURCC_I420;
     pParams->EncodeFourCC = MFX_FOURCC_NV12;
 #if defined (ENABLE_V4L2_SUPPORT)
     pParams->MipiPort = -1;
@@ -328,6 +335,15 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-mfs")))
+       {
+            VAL_CHECK(i + 1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->nMaxFrameSize))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("MaxFrameSize is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+       }
 #if D3D_SURFACES_SUPPORT
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-d3d")))
         {
@@ -417,6 +433,16 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-signal:tm")))
+        {
+            VAL_CHECK(i + 1 >= nArgNum, i, strInput[i]);
+
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->TransferMatrix))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Transfer matrix param is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-membuf")))
         {
             VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
@@ -438,6 +464,15 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-gpucopy::off")))
         {
             pParams->gpuCopy = MFX_GPUCOPY_OFF;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-dump")))
+        {
+            VAL_CHECK(i+1 >= nArgNum, i, strInput[i]);
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->DumpFileName))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("File Name for dumping MSDK library configuration should be provided"));
+                return MFX_ERR_UNSUPPORTED;
+            }
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-cqp")))
         {
@@ -509,7 +544,9 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         {
             pParams->UseRegionEncode = true;
         }
+#ifdef MOD_ENC
         MOD_ENC_PARSE_INPUT
+#endif
 #if defined (ENABLE_V4L2_SUPPORT)
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-d")))
         {
@@ -808,6 +845,14 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         return MFX_ERR_UNSUPPORTED;
     }
 
+    if (MFX_TRANSFERMATRIX_UNKNOWN != pParams->TransferMatrix &&
+        MFX_TRANSFERMATRIX_BT601 != pParams->TransferMatrix &&
+        MFX_TRANSFERMATRIX_BT709 != pParams->TransferMatrix)
+    {
+        PrintHelp(strInput[0], MSDK_STRING("Invalid transfer matrix type"));
+        return MFX_ERR_UNSUPPORTED;
+    }
+
     // set default values for optional parameters that were not set or were set incorrectly
     mfxU32 nviews = (mfxU32)pParams->InputFiles.size();
     if ((nviews <= 1) || (nviews > 2))
@@ -878,11 +923,11 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         return MFX_ERR_UNSUPPORTED;
     }
 
-    if ((pParams->nRateControlMethod == MFX_RATECONTROL_LA) && (pParams->CodecId != MFX_CODEC_AVC))
-    {
-        PrintHelp(strInput[0], MSDK_STRING("Look ahead BRC is supported only with H.264 encoder!"));
-        return MFX_ERR_UNSUPPORTED;
-    }
+    //if ((pParams->nRateControlMethod == MFX_RATECONTROL_LA) && (pParams->CodecId != MFX_CODEC_AVC))
+    //{
+    //    PrintHelp(strInput[0], MSDK_STRING("Look ahead BRC is supported only with H.264 encoder!"));
+    //    return MFX_ERR_UNSUPPORTED;
+    //}
 
     if ((pParams->nMaxSliceSize) && (pParams->CodecId != MFX_CODEC_AVC))
     {
@@ -937,9 +982,8 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         if (pParams->nWidth  != pParams->nDstWidth ||
             pParams->nHeight != pParams->nDstHeight ||
             pParams->nRotationAngle!=0)
-
         {
-            msdk_printf(MSDK_STRING("Region encode option is not compatible with VPP processing.\nRegion encoding is disabled\n"));
+            msdk_printf(MSDK_STRING("Region encode option is not compatible with VPP processing and rotation plugin.\nRegion encoding is disabled\n"));
             pParams->UseRegionEncode=false;
         }
     }
@@ -954,8 +998,9 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
 
 CEncodingPipeline* CreatePipeline(const sInputParams& params)
 {
+#ifdef MOD_ENC
     MOD_ENC_CREATE_PIPELINE;
-
+#endif
     if(params.UseRegionEncode)
     {
         return new CRegionEncodingPipeline;

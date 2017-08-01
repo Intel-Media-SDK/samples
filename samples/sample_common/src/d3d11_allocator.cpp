@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -149,10 +149,6 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
                 DXGI_FORMAT_R16G16B16A16_UNORM != desc.Format &&
                 DXGI_FORMAT_P010 != desc.Format &&
                 DXGI_FORMAT_AYUV != desc.Format
-#ifdef FUTURE_API
-                && DXGI_FORMAT_Y210 != desc.Format &&
-                DXGI_FORMAT_Y410 != desc.Format
-#endif
 )
             {
                 return MFX_ERR_LOCK_MEMORY;
@@ -250,26 +246,6 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
             ptr->V16 = 0;
 
             break;
-#ifdef FUTURE_API
-        case DXGI_FORMAT_Y210:
-            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
-            ptr->PitchLow  = (mfxU16)(lockedRect.RowPitch % (1 << 16));
-            ptr->Y16 = (mfxU16 *)lockedRect.pData;
-            ptr->U16 = ptr->Y16 + 1;
-            ptr->V16 = ptr->Y16 + 3;
-
-            break;
-
-        case DXGI_FORMAT_Y410:
-            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
-            ptr->PitchLow  = (mfxU16)(lockedRect.RowPitch % (1 << 16));
-            ptr->Y410 = (mfxY410 *)lockedRect.pData;
-            ptr->Y = 0;
-            ptr->V = 0;
-            ptr->A = 0;
-
-            break;
-#endif
         default:
 
             return MFX_ERR_LOCK_MEMORY;

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -37,10 +37,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #define D3DFMT_Y210 (D3DFORMAT)MAKEFOURCC('Y','2','1','0')
 #define D3DFMT_IMC3 (D3DFORMAT)MAKEFOURCC('I','M','C','3')
 #define D3DFMT_AYUV (D3DFORMAT)MAKEFOURCC('A','Y','U','V')
-#ifdef FUTURE_API
-#define D3DFMT_Y210 (D3DFORMAT)MAKEFOURCC('Y','2','1','0')
-#define D3DFMT_Y410 (D3DFORMAT)MAKEFOURCC('Y','4','1','0')
-#endif
 
 #define MFX_FOURCC_IMC3 (MFX_MAKEFOURCC('I','M','C','3')) // This line should be moved into mfxstructures.h in new API version
 
@@ -66,12 +62,6 @@ D3DFORMAT ConvertMfxFourccToD3dFormat(mfxU32 fourcc)
         return D3DFMT_P010;
     case MFX_FOURCC_P210:
         return D3DFMT_P210;
-#ifdef FUTURE_API
-    case MFX_FOURCC_Y210:
-        return D3DFMT_Y210;
-    case MFX_FOURCC_Y410:
-        return D3DFMT_Y410;
-#endif
     case MFX_FOURCC_A2RGB10:
         return D3DFMT_A2R10G10B10;
     case MFX_FOURCC_ABGR16:
@@ -154,10 +144,6 @@ mfxStatus D3DFrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
         desc.Format != D3DFMT_A16B16G16R16 &&
         desc.Format != D3DFMT_IMC3 &&
         desc.Format != D3DFMT_AYUV
-#ifdef FUTURE_API
-        && desc.Format != D3DFMT_Y210 &&
-        desc.Format != D3DFMT_Y410
-#endif
         )
         return MFX_ERR_LOCK_MEMORY;
 
@@ -229,21 +215,6 @@ mfxStatus D3DFrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
         ptr->Y = ptr->V + 2;
         ptr->A = ptr->V + 3;
         break;
-#ifdef FUTURE_API
-    case D3DFMT_Y210:
-        ptr->Pitch = (mfxU16)locked.Pitch;
-        ptr->Y16 = (mfxU16 *)locked.pBits;
-        ptr->U16 = ptr->Y16 + 1;
-        ptr->V16 = ptr->Y16 + 3;
-        break;
-    case D3DFMT_Y410:
-        ptr->Pitch = (mfxU16)locked.Pitch;
-        ptr->Y410 = (mfxY410 *)locked.pBits;
-        ptr->Y = 0;
-        ptr->V = 0;
-        ptr->A = 0;
-        break;
-#endif
     }
 
     return MFX_ERR_NONE;
@@ -305,7 +276,10 @@ mfxStatus D3DFrameAllocator::ReleaseResponse(mfxFrameAllocResponse *response)
         for (mfxU32 i = 0; i < response->NumFrameActual; i++) {
             if (response->mids[i]) {
                 mfxHDLPair *dxMids = (mfxHDLPair*)response->mids[i];
-                static_cast<IDirect3DSurface9*>(dxMids->first)->Release();
+                if (dxMids->first)
+                {
+                    static_cast<IDirect3DSurface9*>(dxMids->first)->Release();
+                }
                 MSDK_SAFE_FREE(dxMids);
             }
         }

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -115,10 +115,14 @@ mfxStatus BaseFrameAllocator::AllocFrames(mfxFrameAllocRequest *request, mfxFram
 
     mfxStatus sts = MFX_ERR_NONE;
 
-    if ( (request->Type & MFX_MEMTYPE_EXTERNAL_FRAME) &&
-         ( (request->Type & MFX_MEMTYPE_FROM_DECODE) ||
-           (request->Type & MFX_MEMTYPE_FROM_ENC) ||
-           (request->Type & MFX_MEMTYPE_FROM_PAK) ) )
+    if ( // External Frames
+        ((request->Type & MFX_MEMTYPE_EXTERNAL_FRAME) &&
+         (request->Type & (MFX_MEMTYPE_FROM_DECODE | MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK)))
+         // Exception: Internal Frames for FEI ENC / PAK reconstructs
+         ||
+        ((request->Type & MFX_MEMTYPE_INTERNAL_FRAME) &&
+         (request->Type & (MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK)))
+       )
     {
         bool foundInCache = false;
         // external decoder allocations
@@ -148,7 +152,7 @@ mfxStatus BaseFrameAllocator::AllocFrames(mfxFrameAllocRequest *request, mfxFram
             if (sts == MFX_ERR_NONE)
             {
                 response->AllocId = request->AllocId;
-                m_ExtResponses.push_back(UniqueResponse(*response, request->Info.Width, request->Info.Height, request->Type & MEMTYPE_FROM_MASK));
+                m_ExtResponses.push_back(UniqueResponse(*response, request->Info.Width, request->Info.Height, UniqueResponse::CropMemoryTypeToStore(request->Type)));
             }
         }
     }

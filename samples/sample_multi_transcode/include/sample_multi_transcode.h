@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -60,7 +60,8 @@ namespace TranscodingSample
         // sessions to process playlist
         std::vector<ThreadTranscodeContext*> m_pSessionArray;
         // handles
-        std::vector<MSDKThread*>             m_HDLArray;
+        typedef std::list<MSDKThread*>::iterator MSDKThreadsIterator;
+        std::list<MSDKThread*>             m_HDLArray;
         // allocator for each session
         std::vector<GeneralAllocator*>       m_pAllocArray;
         // input parameters for each session

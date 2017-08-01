@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -268,7 +268,10 @@ mfxStatus vaapiFrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
 
                 mfx_res = va_to_mfx_status(va_res);
 
-                m_libva->vaDestroyImage(m_dpy, vaapi_mids[i].m_image.buf);
+                if (MFX_ERR_NONE != mfx_res) {
+                    m_libva->vaDestroyImage(m_dpy, vaapi_mids[i].m_image.image_id);
+                    break;
+                }
             }
             if (m_exporter) {
                 vaapi_mids[i].m_custom = m_exporter->acquire(&vaapi_mids[i]);

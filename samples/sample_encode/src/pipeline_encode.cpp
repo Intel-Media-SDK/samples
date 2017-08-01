@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -21,6 +21,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "pipeline_encode.h"
 #include "sysmem_allocator.h"
+#include "parameters_dumper.h"
 
 #if D3D_SURFACES_SUPPORT
 #include "d3d_allocator.h"
@@ -41,6 +42,8 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #if defined (ENABLE_V4L2_SUPPORT)
 #include <pthread.h>
 #endif
+
+#include "version.h"
 
 /* obtain the clock tick of an uninterrupted master clock */
 msdk_tick time_get_tick(void)
@@ -348,6 +351,8 @@ mfxStatus CEncodingPipeline::AllocAndInitVppDoNotUse()
 {
     m_VppDoNotUse.NumAlg = 4;
 
+    if(m_VppDoNotUse.AlgList)
+        delete[] m_VppDoNotUse.AlgList;
     m_VppDoNotUse.AlgList = new mfxU32 [m_VppDoNotUse.NumAlg];
     MSDK_CHECK_POINTER(m_VppDoNotUse.AlgList,  MFX_ERR_MEMORY_ALLOC);
 
@@ -424,6 +429,7 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
     m_mfxEncParams.mfx.FrameInfo.FourCC       = pInParams->EncodeFourCC;
     m_mfxEncParams.mfx.FrameInfo.ChromaFormat = FourCCToChroma(pInParams->EncodeFourCC);
     m_mfxEncParams.mfx.FrameInfo.PicStruct    = pInParams->nPicStruct;
+    m_mfxEncParams.mfx.FrameInfo.Shift = pInParams->shouldUseShiftedP010Enc;
 
     // width must be a multiple of 16
     // height must be a multiple of 16 in case of frame picture and a multiple of 32 in case of field picture
@@ -455,11 +461,13 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
     }
 
     // configure the depth of the look ahead BRC if specified in command line
-    if (pInParams->nLADepth || pInParams->nMaxSliceSize || pInParams->nBRefType)
+    if (pInParams->nLADepth || pInParams->nMaxSliceSize || pInParams->nMaxFrameSize || pInParams->nBRefType || (pInParams->nExtBRC && (pInParams->CodecId == MFX_CODEC_HEVC || pInParams->CodecId == MFX_CODEC_AVC)))
     {
         m_CodingOption2.LookAheadDepth = pInParams->nLADepth;
         m_CodingOption2.MaxSliceSize   = pInParams->nMaxSliceSize;
+        m_CodingOption2.MaxFrameSize = pInParams->nMaxFrameSize;
         m_CodingOption2.BRefType = pInParams->nBRefType;
+        m_CodingOption2.ExtBRC = (pInParams->CodecId == MFX_CODEC_HEVC || pInParams->CodecId == MFX_CODEC_AVC)? pInParams->nExtBRC : 0;
         m_EncExtParams.push_back((mfxExtBuffer *)&m_CodingOption2);
     }
 
@@ -479,6 +487,13 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
         m_ExtHEVCParam.PicWidthInLumaSamples = m_mfxEncParams.mfx.FrameInfo.CropW;
         m_ExtHEVCParam.PicHeightInLumaSamples = m_mfxEncParams.mfx.FrameInfo.CropH;
         m_EncExtParams.push_back((mfxExtBuffer*)&m_ExtHEVCParam);
+    }
+
+    if (pInParams->TransferMatrix)
+    {
+        m_VideoSignalInfo.ColourDescriptionPresent = 1;
+        m_VideoSignalInfo.MatrixCoefficients = pInParams->TransferMatrix;
+        m_EncExtParams.push_back((mfxExtBuffer*)&m_VideoSignalInfo);
     }
 
     if (!m_EncExtParams.empty())
@@ -501,6 +516,15 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
     return MFX_ERR_NONE;
 }
 
+mfxU32 CEncodingPipeline::FileFourCC2EncFourCC(mfxU32 fcc)
+{
+    // File reader automatically converts I420 and YV12 to NV12
+    if (fcc == MFX_FOURCC_I420 || fcc == MFX_FOURCC_YV12)
+        return MFX_FOURCC_NV12;
+    else
+        return fcc;
+}
+
 mfxStatus CEncodingPipeline::InitMfxVppParams(sInputParams *pInParams)
 {
     MSDK_CHECK_POINTER(pInParams,  MFX_ERR_NULL_PTR);
@@ -515,7 +539,7 @@ mfxStatus CEncodingPipeline::InitMfxVppParams(sInputParams *pInParams)
         m_mfxVppParams.IOPattern = MFX_IOPATTERN_IN_SYSTEM_MEMORY | MFX_IOPATTERN_OUT_SYSTEM_MEMORY;
     }
 
-    m_mfxVppParams.vpp.In.PicStruct = pInParams->nPicStruct;;
+    m_mfxVppParams.vpp.In.PicStruct = pInParams->nPicStruct;
     ConvertFrameRate(pInParams->dFrameRate, &m_mfxVppParams.vpp.In.FrameRateExtN, &m_mfxVppParams.vpp.In.FrameRateExtD);
 
     // width must be a multiple of 16
@@ -531,10 +555,16 @@ mfxStatus CEncodingPipeline::InitMfxVppParams(sInputParams *pInParams)
 
     // fill output frame info
     MSDK_MEMCPY_VAR(m_mfxVppParams.vpp.Out,&m_mfxVppParams.vpp.In, sizeof(mfxFrameInfo));
-    m_mfxVppParams.vpp.In.FourCC    = m_InputFourCC;
+
+    m_mfxVppParams.vpp.In.FourCC    = FileFourCC2EncFourCC(m_InputFourCC);
+
     m_mfxVppParams.vpp.Out.FourCC    = pInParams->EncodeFourCC;
     m_mfxVppParams.vpp.In.ChromaFormat =  FourCCToChroma(m_mfxVppParams.vpp.In.FourCC);
     m_mfxVppParams.vpp.Out.ChromaFormat = FourCCToChroma(m_mfxVppParams.vpp.Out.FourCC);
+
+    // Fill Shift bit
+    m_mfxVppParams.vpp.In.Shift = pInParams->shouldUseShiftedP010VPP;
+    m_mfxVppParams.vpp.Out.Shift = pInParams->shouldUseShiftedP010Enc; // This output should correspond to Encoder settings
 
     // input frame info
 #if defined (ENABLE_V4L2_SUPPORT)
@@ -624,13 +654,16 @@ mfxStatus CEncodingPipeline::AllocFrames()
     MSDK_ZERO_MEMORY(VppRequest[0]);
     MSDK_ZERO_MEMORY(VppRequest[1]);
 
+    // Querying encoder
+    sts = GetFirstEncoder()->Query(&m_mfxEncParams, &m_mfxEncParams);
+    MSDK_CHECK_STATUS(sts, "Query (for encoder) failed");
+
     // Calculate the number of surfaces for components.
     // QueryIOSurf functions tell how many surfaces are required to produce at least 1 output.
     // To achieve better performance we provide extra surfaces.
     // 1 extra surface at input allows to get 1 extra output.
-
     sts = GetFirstEncoder()->QueryIOSurf(&m_mfxEncParams, &EncRequest);
-    MSDK_CHECK_STATUS(sts, "GetFirstEncoder failed");
+    MSDK_CHECK_STATUS(sts, "QueryIOSurf (for encoder) failed");
 
     if (!m_pmfxVPP)
     {
@@ -645,6 +678,10 @@ mfxStatus CEncodingPipeline::AllocFrames()
 
     if (m_pmfxVPP)
     {
+        // Querying VPP
+        sts = m_pmfxVPP->Query(&m_mfxVppParams, &m_mfxVppParams);
+        MSDK_CHECK_STATUS(sts, "m_pmfxVPP->Query failed");
+
         // VppRequest[0] for input frames request, VppRequest[1] for output frames request
         sts = m_pmfxVPP->QueryIOSurf(&m_mfxVppParams, VppRequest);
         MSDK_CHECK_STATUS(sts, "m_pmfxVPP->QueryIOSurf failed");
@@ -900,7 +937,7 @@ CEncodingPipeline::CEncodingPipeline()
     m_bExternalAlloc = false;
     m_pEncSurfaces = NULL;
     m_pVppSurfaces = NULL;
-    m_InputFourCC = NULL;
+    m_InputFourCC = 0;
 
     m_nMemBuffer = 0;
     m_nTimeout = 0;
@@ -936,6 +973,10 @@ CEncodingPipeline::CEncodingPipeline()
     MSDK_ZERO_MEMORY(m_ExtHEVCParam);
     m_ExtHEVCParam.Header.BufferId = MFX_EXTBUFF_HEVC_PARAM;
     m_ExtHEVCParam.Header.BufferSz = sizeof(m_ExtHEVCParam);
+
+    MSDK_ZERO_MEMORY(m_VideoSignalInfo);
+    m_VideoSignalInfo.Header.BufferId = MFX_EXTBUFF_VIDEO_SIGNAL_INFO;
+    m_VideoSignalInfo.Header.BufferSz = sizeof(m_VideoSignalInfo);
 
     m_hwdev = NULL;
 
@@ -1045,22 +1086,12 @@ mfxStatus CEncodingPipeline::Init(sInputParams *pParams)
     isV4L2InputEnabled = pParams->isV4L2InputEnabled;
 #endif
 
-    if (!isV4L2InputEnabled)
-    {
-        // prepare input file reader
-        sts = m_FileReader.Init(pParams->InputFiles,
-            pParams->FileInputFourCC );
-        MSDK_CHECK_STATUS(sts, "m_FileReader.Init failed");
-    }
-
     m_MVCflags = pParams->MVC_flags;
 
     // FileReader can convert yv12->nv12 without vpp
-    m_InputFourCC = (pParams->FileInputFourCC == MFX_FOURCC_YV12) ? MFX_FOURCC_NV12 : pParams->FileInputFourCC;
+    m_InputFourCC = (pParams->FileInputFourCC == MFX_FOURCC_I420) ? MFX_FOURCC_NV12 : pParams->FileInputFourCC;
 
     m_nTimeout = pParams->nTimeout;
-    sts = InitFileWriters(pParams);
-    MSDK_CHECK_STATUS(sts, "InitFileWriters failed");
 
     mfxInitParam initPar;
     mfxVersion version;     // real API version with which library is initialized
@@ -1083,14 +1114,11 @@ mfxStatus CEncodingPipeline::Init(sInputParams *pParams)
         if (D3D11_MEMORY == pParams->memType)
             initPar.Implementation |= MFX_IMPL_VIA_D3D11;
 
+        // Library should pick first available compatible adapter during InitEx call with MFX_IMPL_HARDWARE_ANY
         sts = m_mfxSession.InitEx(initPar);
-
-        // MSDK API version may not support multiple adapters - then try initialize on the default
-        if (MFX_ERR_NONE != sts) {
-            initPar.Implementation = (initPar.Implementation & !MFX_IMPL_HARDWARE_ANY) | MFX_IMPL_HARDWARE;
-            sts = m_mfxSession.InitEx(initPar);
-        }
-    } else {
+    }
+    else
+    {
         initPar.Implementation = MFX_IMPL_SOFTWARE;
         sts = m_mfxSession.InitEx(initPar);
     }
@@ -1138,10 +1166,12 @@ mfxStatus CEncodingPipeline::Init(sInputParams *pParams)
         }
         else
         {
+            bool isDefaultPlugin = false;
             if (AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
             {
                 mfxIMPL impl = pParams->bUseHWLib ? MFX_IMPL_HARDWARE : MFX_IMPL_SOFTWARE;
                 pParams->pluginParams.pluginGuid = msdkGetPluginUID(impl, MSDK_VENCODE, pParams->CodecId);
+                isDefaultPlugin = true;
             }
             if (!AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
             {
@@ -1150,11 +1180,60 @@ mfxStatus CEncodingPipeline::Init(sInputParams *pParams)
             }
             if(sts==MFX_ERR_UNSUPPORTED)
             {
-                msdk_printf(MSDK_STRING("Default plugin cannot be loaded (possibly you have to define plugin explicitly)\n"));
+                msdk_printf(isDefaultPlugin ?
+                    MSDK_STRING("Default plugin cannot be loaded (possibly you have to define plugin explicitly)\n")
+                    : MSDK_STRING("Explicitly specified plugin cannot be loaded.\n"));
             }
         }
         MSDK_CHECK_STATUS(sts, "LoadPlugin failed");
     }
+
+    // create encoder
+    m_pmfxENC = new MFXVideoENCODE(m_mfxSession);
+    MSDK_CHECK_POINTER(m_pmfxENC, MFX_ERR_MEMORY_ALLOC);
+
+    // create preprocessor if resizing was requested from command line
+    // or if different FourCC is set
+    if (pParams->nWidth  != pParams->nDstWidth ||
+        pParams->nHeight != pParams->nDstHeight ||
+        FileFourCC2EncFourCC(pParams->FileInputFourCC) != pParams->EncodeFourCC)
+    {
+        m_pmfxVPP = new MFXVideoVPP(m_mfxSession);
+        MSDK_CHECK_POINTER(m_pmfxVPP, MFX_ERR_MEMORY_ALLOC);
+    }
+
+    // Determine if we should shift P010 surfaces
+    pParams->shouldUseShiftedP010VPP = m_pmfxVPP && pParams->memType != SYSTEM_MEMORY &&
+        pParams->FileInputFourCC == MFX_FOURCC_P010;
+
+    pParams->shouldUseShiftedP010Enc = pParams->memType != SYSTEM_MEMORY &&
+        pParams->FileInputFourCC == MFX_FOURCC_P010 &&
+        AreGuidsEqual(pParams->pluginParams.pluginGuid, MFX_PLUGINID_HEVCE_HW);
+    bool readerShift = m_pmfxVPP ? pParams->shouldUseShiftedP010VPP  : pParams->shouldUseShiftedP010Enc;
+
+    if(readerShift)
+    {
+        msdk_printf(MSDK_STRING("P010 frames data will be shifted to MSB area to be compatible with HEVC HW input format\n"));
+    }
+
+    if(m_pmfxVPP && pParams->shouldUseShiftedP010Enc && !pParams->shouldUseShiftedP010Enc && pParams->bUseHWLib)
+    {
+        msdk_printf(MSDK_STRING("ERROR: Encoder requires P010 LSB format. VPP currently supports only MSB encoding for P010 format. Sample cannot combine both of them in one pipeline.\n"));
+        return MFX_ERR_UNSUPPORTED;
+    }
+
+    // Preparing readers and writers
+    if (!isV4L2InputEnabled)
+    {
+        // prepare input file reader
+        sts = m_FileReader.Init(pParams->InputFiles,
+            pParams->FileInputFourCC,readerShift);
+        MSDK_CHECK_STATUS(sts, "m_FileReader.Init failed");
+    }
+
+    sts = InitFileWriters(pParams);
+    MSDK_CHECK_STATUS(sts, "InitFileWriters failed");
+
 
     // set memory type
     m_memType = pParams->memType;
@@ -1177,20 +1256,6 @@ mfxStatus CEncodingPipeline::Init(sInputParams *pParams)
         MSDK_CHECK_STATUS(sts, "AllocAndInitMVCSeqDesc failed");
     }
 
-    // create encoder
-    m_pmfxENC = new MFXVideoENCODE(m_mfxSession);
-    MSDK_CHECK_POINTER(m_pmfxENC, MFX_ERR_MEMORY_ALLOC);
-
-    // create preprocessor if resizing was requested from command line
-    // or if different FourCC is set in InitMfxVppParams
-    if (pParams->nWidth  != pParams->nDstWidth ||
-        pParams->nHeight != pParams->nDstHeight ||
-        m_mfxVppParams.vpp.In.FourCC != m_mfxVppParams.vpp.Out.FourCC)
-    {
-        m_pmfxVPP = new MFXVideoVPP(m_mfxSession);
-        MSDK_CHECK_POINTER(m_pmfxVPP, MFX_ERR_MEMORY_ALLOC);
-    }
-
     sts = ResetMFXComponents(pParams);
     MSDK_CHECK_STATUS(sts, "ResetMFXComponents failed");
 
@@ -1200,6 +1265,12 @@ mfxStatus CEncodingPipeline::Init(sInputParams *pParams)
 
     // If output isn't specified work in performance mode and do not insert idr
     m_bCutOutput = pParams->dstFileBuff.size() ? !pParams->bUncut : false;
+
+    // Dumping components configuration if required
+    if(*pParams->DumpFileName)
+    {
+        CParametersDumper::DumpLibraryConfiguration(pParams->DumpFileName, NULL, m_pmfxVPP, m_pmfxENC, NULL, &m_mfxVppParams,&m_mfxEncParams);
+    }
 
     return MFX_ERR_NONE;
 }
@@ -1282,7 +1353,7 @@ void CEncodingPipeline::Close()
         msdk_printf(MSDK_STRING("Frame number: %u\r\n"), m_FileWriters.first->m_nProcessedFramesNum);
 #ifdef TIME_STATS
         mfxF64 ProcDeltaTime = m_statOverall.GetDeltaTime() - m_statFile.GetDeltaTime() - m_TaskPool.GetFileStatistics().GetDeltaTime();
-        msdk_printf(MSDK_STRING("Encoding fps: %.0f"), m_FileWriters.first->m_nProcessedFramesNum / ProcDeltaTime);
+        msdk_printf(MSDK_STRING("Encoding fps: %.0f\n"), m_FileWriters.first->m_nProcessedFramesNum / ProcDeltaTime);
 #endif
     }
 
@@ -1564,6 +1635,7 @@ mfxStatus CEncodingPipeline::Run()
             {
                 sts = m_pmfxVPP->RunFrameVPPAsync(&m_pVppSurfaces[nVppSurfIdx], &m_pEncSurfaces[nEncSurfIdx],
                     NULL, &VppSyncPoint);
+
                 if (m_nMemBuffer)
                 {
                    // increment buffer index
@@ -1852,7 +1924,7 @@ mfxStatus CEncodingPipeline::LoadNextFrame(mfxFrameSurface1* pSurf)
 
 void CEncodingPipeline::PrintInfo()
 {
-    msdk_printf(MSDK_STRING("Encoding Sample Version %s\n"), MSDK_SAMPLE_VERSION);
+    msdk_printf(MSDK_STRING("Encoding Sample Version %s\n"), GetMSDKSampleVersion().c_str());
     msdk_printf(MSDK_STRING("\nInput file format\t%s\n"), ColorFormatToStr(m_FileReader.m_ColorFormat));
     msdk_printf(MSDK_STRING("Output video\t\t%s\n"), CodecIdToStr(m_mfxEncParams.mfx.CodecId).c_str());
 

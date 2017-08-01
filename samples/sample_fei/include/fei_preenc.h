@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -50,7 +50,7 @@ public:
 
     mfxExtFeiPreEncMV::mfxExtFeiPreEncMVMB m_tmpMVMB;
 
-    /* For I/O operations with extended buffers */
+    /* For I/O operations with extension buffers */
     FILE* m_pMvPred_in;
     FILE* m_pMbQP_in;
     FILE* m_pMBstat_out;
@@ -81,7 +81,8 @@ public:
                     mfxU16 & numRefActiveP,
                     mfxU16 & numRefActiveBL0,
                     mfxU16 & numRefActiveBL1,
-                    mfxU16 & bRefType);
+                    mfxU16 & bRefType,
+                    bool   & bSigleFieldProcessing);
 
     mfxStatus FillDSVideoParams();
     mfxStatus FillParameters();

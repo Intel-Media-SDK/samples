@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -23,18 +23,17 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <cctype>
 #include <sstream>
 #include <fstream>
+#include "version.h"
 
 #define VAL_CHECK(val) {if (val) return MFX_ERR_UNKNOWN;}
 
 void vppPrintHelp(const msdk_char *strAppName, const msdk_char *strErrorMessage)
-{if (strErrorMessage)
 {
-    msdk_printf(MSDK_STRING("Error: %s\n"), strErrorMessage);
-}
-else
-{
-    msdk_printf(MSDK_STRING("Intel(R) Media SDK VPP Sample\n"));
-}
+    msdk_printf(MSDK_STRING("Intel(R) Media SDK VPP Sample version %s\n"), GetMSDKSampleVersion().c_str());
+    if (strErrorMessage)
+    {
+        msdk_printf(MSDK_STRING("Error: %s\n"), strErrorMessage);
+    }
 
 msdk_printf(MSDK_STRING("Usage: %s [Options] -i InputFile -o OutputFile\n"), strAppName);
 
@@ -61,11 +60,7 @@ msdk_printf(MSDK_STRING("   [-scrY  y]                  - cropY  of src video (d
 msdk_printf(MSDK_STRING("   [-scrW  w]                  - cropW  of src video (def: width)\n"));
 msdk_printf(MSDK_STRING("   [-scrH  h]                  - cropH  of src video (def: height)\n"));
 msdk_printf(MSDK_STRING("   [-sf   frameRate]           - frame rate of src video (def: 30.0)\n"));
-#ifdef FUTURE_API
-msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv|y210|y410)\n"));
-#else
-msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv)\n"));
-#endif
+msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support i420|nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv)\n"));
 msdk_printf(MSDK_STRING("   [-sbitshift 0|1]            - shift data to right or keep it the same way as in Microsoft's P010\n"));
 msdk_printf(MSDK_STRING("   [-sbitdepthluma value]      - shift luma channel to right to \"16 - value\" bytes\n"));
 msdk_printf(MSDK_STRING("   [-sbitdepthchroma value]    - shift chroma channel to right to \"16 - value\" bytes\n"));
@@ -84,11 +79,7 @@ msdk_printf(MSDK_STRING("   [-dcrY  y]                  - cropY  of dst video (d
 msdk_printf(MSDK_STRING("   [-dcrW  w]                  - cropW  of dst video (def: width)\n"));
 msdk_printf(MSDK_STRING("   [-dcrH  h]                  - cropH  of dst video (def: height)\n"));
 msdk_printf(MSDK_STRING("   [-df  frameRate]            - frame rate of dst video (def: 30.0)\n"));
-#ifdef FUTURE_API
-msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support nv12|yuy2|rgb4|yv12|ayuv|y210|y410)\n"));
-#else
-msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support nv12|yuy2|rgb4|yv12|ayuv)\n"));
-#endif
+msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support i420|nv12|yuy2|rgb4|yv12|ayuv)\n"));
 msdk_printf(MSDK_STRING("   [-dbitshift 0|1]            - shift data to right or keep it the same way as in Microsoft's P010\n"));
 msdk_printf(MSDK_STRING("   [-dbitdepthluma value]      - shift luma channel to left to \"16 - value\" bytes\n"));
 msdk_printf(MSDK_STRING("   [-dbitdepthchroma value]    - shift chroma channel to left to \"16 - value\" bytes\n"));
@@ -339,6 +330,10 @@ mfxU32 Str2FourCC( msdk_char* strInput )
     {
         fourcc = MFX_FOURCC_UYVY;
     }
+    else if (0 == msdk_stricmp(strInput, MSDK_STRING("i420")))
+    {
+        fourcc = MFX_FOURCC_I420;
+    }
 
     return fourcc;
 
@@ -445,7 +440,7 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
                 pParams->videoSignalInfoParam[paramID].mode = VPP_FILTER_ENABLED_CONFIGURED;
 
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->videoSignalInfoParam[paramID].In.NominalRange);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->videoSignalInfoParam[paramID].In.NominalRange);
             }
             else if ( 0 == msdk_strcmp(strInput[i], MSDK_STRING("-dsinr")) )
             {
@@ -454,7 +449,7 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
                 pParams->videoSignalInfoParam[paramID].mode = VPP_FILTER_ENABLED_CONFIGURED;
 
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->videoSignalInfoParam[paramID].Out.NominalRange);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->videoSignalInfoParam[paramID].Out.NominalRange);
             }
             else if ( 0 == msdk_strcmp(strInput[i], MSDK_STRING("-ssitm")) )
             {
@@ -463,7 +458,7 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
                 pParams->videoSignalInfoParam[paramID].mode = VPP_FILTER_ENABLED_CONFIGURED;
 
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->videoSignalInfoParam[paramID].In.TransferMatrix);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->videoSignalInfoParam[paramID].In.TransferMatrix);
             }
             else if ( 0 == msdk_strcmp(strInput[i], MSDK_STRING("-dsitm")) )
             {
@@ -472,7 +467,7 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
                 pParams->videoSignalInfoParam[paramID].mode = VPP_FILTER_ENABLED_CONFIGURED;
 
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->videoSignalInfoParam[paramID].Out.TransferMatrix);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->videoSignalInfoParam[paramID].Out.TransferMatrix);
             }
             else if ( 0 == msdk_strcmp(strInput[i], MSDK_STRING("-mirror")) )
             {
@@ -481,31 +476,31 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
                 pParams->mirroringParam[paramID].mode = VPP_FILTER_ENABLED_CONFIGURED;
 
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->mirroringParam[paramID].Type);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->mirroringParam[paramID].Type);
             }
             else if ( 0 == msdk_strcmp(strInput[i], MSDK_STRING("-sw")) )
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->frameInfoIn.back().nWidth);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->frameInfoIn.back().nWidth);
             }
             else if ( 0 == msdk_stricmp(strInput[i], MSDK_STRING("-dw")) )
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->frameInfoOut.back().nWidth);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->frameInfoOut.back().nWidth);
             }
             else if ( 0 == msdk_strcmp(strInput[i], MSDK_STRING("-sh")) )
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->frameInfoIn.back().nHeight);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->frameInfoIn.back().nHeight);
             }
             else if ( 0 == msdk_stricmp(strInput[i], MSDK_STRING("-dh")) )
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->frameInfoOut.back().nHeight);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->frameInfoOut.back().nHeight);
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-denoise")))
             {
@@ -582,7 +577,7 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &pParams->rotate[paramID]);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->rotate[paramID]);
             }
             // different modes of MFX FRC
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-frc:advanced")))
@@ -636,7 +631,7 @@ mfxStatus vppParseResetPar(msdk_char* strInput[], mfxU8 nArgNum, mfxU8& curArg, 
                 i++;
 
                 mfxU16 viewCount;
-                msdk_sscanf(strInput[i], MSDK_STRING("%hd"), &viewCount);
+                msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &viewCount);
                 if( viewCount > 1 )
                 {
                     pParams->multiViewParam[paramID].viewCount = (mfxU16)viewCount;
@@ -1198,6 +1193,7 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
                 msdk_strncopy_s(pParams->strSrcFile, MSDK_MAX_FILENAME_LEN, strInput[i], MSDK_MAX_FILENAME_LEN - 1);
+                pParams->strSrcFile[MSDK_MAX_FILENAME_LEN - 1] = 0;
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-o")))
             {
@@ -1212,23 +1208,31 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
                 msdk_strncopy_s(pParams->strPerfFile, MSDK_MAX_FILENAME_LEN, strInput[i], MSDK_MAX_FILENAME_LEN - 1);
+                pParams->strPerfFile[MSDK_MAX_FILENAME_LEN - 1] = 0;
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-scc")))
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
                 pParams->frameInfoIn[0].FourCC = Str2FourCC( strInput[i] );
+                pParams->isInI420 = false;
+                if (MFX_FOURCC_I420 == pParams->frameInfoIn[0].FourCC)
+                {
+                    pParams->frameInfoIn[0].FourCC = MFX_FOURCC_YV12; // I420 input is implemented using YV12 internally
+                    pParams->isInI420 = true;
+                }
+
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-dcc")))
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
                 pParams->frameInfoOut[0].FourCC = Str2FourCC( strInput[i] );
-                pParams->isOutYV12 = false;
-                if(MFX_FOURCC_YV12 == pParams->frameInfoOut[0].FourCC)
+                pParams->forcedOutputFourcc = 0;
+                if(MFX_FOURCC_I420 == pParams->frameInfoOut[0].FourCC || MFX_FOURCC_YV12 == pParams->frameInfoOut[0].FourCC)
                 {
-                    pParams->frameInfoOut[0].FourCC = MFX_FOURCC_NV12;
-                    pParams->isOutYV12 = true;
+                    pParams->forcedOutputFourcc = pParams->frameInfoOut[0].FourCC;
+                    pParams->frameInfoOut[0].FourCC = MFX_FOURCC_NV12; // I420 output is implemented using NV12 internally
                 }
             }
             else if(0 == msdk_strcmp(strInput[i], MSDK_STRING("-dbitshift")))
@@ -1358,6 +1362,7 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
                 msdk_strncopy_s(pParams->strPlgGuid, MSDK_MAX_FILENAME_LEN, strInput[i],MSDK_MAX_FILENAME_LEN-1);
+                pParams->strPlgGuid[MSDK_MAX_FILENAME_LEN - 1] = 0;
                 pParams->need_plugin = true;
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-plugin_guid")))
@@ -1365,6 +1370,7 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
                 msdk_strncopy_s(pParams->strPlgGuid, MSDK_MAX_FILENAME_LEN, strInput[i],MSDK_MAX_FILENAME_LEN-1);
+                pParams->strPlgGuid[MSDK_MAX_FILENAME_LEN - 1] = 0; 
                 pParams->need_plugin = true;
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-extapi")) )

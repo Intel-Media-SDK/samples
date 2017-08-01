@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -46,7 +46,6 @@ struct D3DAllocatorParams;
 
 namespace TranscodingSample
 {
-
     struct sInputParams;
 
     msdk_tick GetTick();
@@ -107,6 +106,13 @@ namespace TranscodingSample
     protected:
         mfxStatus ParseParFile(FILE* file);
         mfxStatus TokenizeLine(msdk_char *pLine, mfxU32 length);
+
+#if _MSDK_API >= MSDK_API(1,22)
+        static bool isspace(char a);
+        static bool is_not_allowed_char(char a);
+        bool ParseROIFile(msdk_char const *roi_file_name, std::vector<mfxExtEncoderROI>& m_ROIData);
+#endif //_MSDK_API >= MSDK_API(1,22)
+
         mfxStatus ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[]);
         mfxStatus ParseOption__set(msdk_char* strCodecType, msdk_char* strPluginPath);
         sPluginParams ParsePluginParameter(msdk_char* strPluginPath);
@@ -118,6 +124,7 @@ namespace TranscodingSample
         FILE                                         *m_PerfFILE;
         msdk_char                                    *m_parName;
         mfxU32                                       statisticsWindowSize;
+        FILE                                         *statisticsLogFile;
         mfxU32                                       m_nTimeout;
         bool                                         shouldUseGreedyFormula;
         std::vector<msdk_string>                     m_lines;

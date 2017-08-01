@@ -1,5 +1,5 @@
 ##******************************************************************************
-##  Copyright(C) 2012-2016 Intel Corporation. All Rights Reserved.
+##  Copyright(C) 2015 Intel Corporation. All Rights Reserved.
 ##
 ##  The source code, information  and  material ("Material") contained herein is
 ##  owned  by Intel Corporation or its suppliers or licensors, and title to such
@@ -22,46 +22,54 @@
 ##  suppliers or licensors in any way.
 ##
 ##******************************************************************************
-##  Content: Intel(R) Media SDK Samples projects creation and build
+##  Content: Intel(R) Media SDK Global Configuration of Targets Cmake module
 ##******************************************************************************
 
-if(ENABLE_ITT)
-
-  if(CMAKE_VTUNE_HOME)
-    set( VTUNE_HOME ${CMAKE_VTUNE_HOME} )
-  else()
-    set( VTUNE_HOME /opt/intel/vtune_amplifier_xe )
-  endif()
-
+if(__ITT OR ENABLE_ITT)
   if( Linux )
+    if( CMAKE_VTUNE_HOME )
+      set( VTUNE_HOME ${CMAKE_VTUNE_HOME} )
+    elseif( DEFINED ENV{CMAKE_VTUNE_HOME} )
+      set( VTUNE_HOME $ENV{CMAKE_VTUNE_HOME} )
+    else()
+      set( VTUNE_HOME /opt/intel/vtune_amplifier_xe )
+    endif()
+
     if( __ARCH MATCHES intel64 )
       set( arch "64" )
     elseif()
       set( arch "32" )
-    endif( )
+    endif()
 
     find_path( VTUNE_INCLUDE ittnotify.h PATHS ${VTUNE_HOME}/include )
     find_library( VTUNE_LIBRARY libittnotify.a PATHS ${VTUNE_HOME}/lib${arch}/ )
 
-    if(NOT VTUNE_INCLUDE MATCHES NOTFOUND)
-      if(NOT VTUNE_LIBRARY MATCHES NOTFOUND)
+    if( NOT VTUNE_INCLUDE MATCHES NOTFOUND )
+      if( NOT VTUNE_LIBRARY MATCHES NOTFOUND )
         set( VTUNE_FOUND TRUE )
-        set( ITT_CFLAGS "-I${VTUNE_INCLUDE} -DITT_SUPPORT" )
+        message( STATUS "ITT was found here ${VTUNE_HOME}" )
 
         get_filename_component( VTUNE_LIBRARY_PATH ${VTUNE_LIBRARY} PATH )
+
+        include_directories( ${VTUNE_INCLUDE} )
+        link_directories( ${VTUNE_LIBRARY_PATH} )
+
+        append( "-DMFX_TRACE_ENABLE_ITT" CMAKE_C_FLAGS )
+        append( "-DMFX_TRACE_ENABLE_ITT" CMAKE_CXX_FLAGS )
+
+        set( ITT_CFLAGS "-I${VTUNE_INCLUDE} -DITT_SUPPORT" )
         set( ITT_LIBRARY_DIRS "${VTUNE_LIBRARY_PATH}" )
 
-      endif( )
-    endif( )
-
-    if(NOT DEFINED VTUNE_FOUND)
-      message( FATAL_ERROR "VTune/ITT was not found in ${VTUNE_HOME}! Set/check VTUNE_HOME environment variable!" )
-    else ( )
-      message( STATUS "ITT was found here ${VTUNE_HOME}" )
-    endif( )
-
+        set( ITT_LIBS "" )
+        list( APPEND ITT_LIBS
+          mfx_trace
+          ittnotify
+          dl
+        )
+      endif()
+    endif()
   else()
-    message( FATAL_ERROR "VTune/ITT tracing is supported only for linux!")
+    message( STATUS "MFX tracing is supported only for linux!" )
   endif()
 
 endif()

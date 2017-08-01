@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -64,6 +64,7 @@ Wayland::Wayland()
     , m_x(0), m_y(0)
     , m_perf_mode(false)
 {
+    std::memset(&m_poll, 0, sizeof(m_poll));
 }
 
 bool Wayland::InitDisplay()

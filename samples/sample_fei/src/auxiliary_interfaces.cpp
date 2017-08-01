@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -70,10 +70,10 @@ mfxStatus MFX_VppInterface::Reset(mfxU16 width, mfxU16 height, mfxU16 crop_w, mf
 {
     if (width && height && crop_w && crop_h)
     {
-        m_videoParams.vpp.Out.Width = width;
+        m_videoParams.vpp.Out.Width  = width;
         m_videoParams.vpp.Out.Height = height;
-        m_videoParams.vpp.Out.CropW = crop_w;
-        m_videoParams.vpp.Out.CropH = crop_h;
+        m_videoParams.vpp.Out.CropW  = crop_w;
+        m_videoParams.vpp.Out.CropH  = crop_h;
     }
     return m_pmfxVPP->Reset(&m_videoParams);
 }
@@ -87,9 +87,10 @@ mfxStatus MFX_VppInterface::FillParameters()
 {
     mfxStatus sts = MFX_ERR_NONE;
 
+    /* Share VPP video parameters with other interfaces */
     m_pAppConfig->PipelineCfg.pVppVideoParam = &m_videoParams;
 
-    m_videoParams.AllocId = m_allocId;
+    m_videoParams.AllocId   = m_allocId;
     // specify memory type
     m_videoParams.IOPattern = mfxU16(m_pAppConfig->bUseHWmemory ? (MFX_IOPATTERN_IN_VIDEO_MEMORY | MFX_IOPATTERN_OUT_VIDEO_MEMORY)
         : (MFX_IOPATTERN_IN_SYSTEM_MEMORY | MFX_IOPATTERN_OUT_SYSTEM_MEMORY));
@@ -106,9 +107,9 @@ mfxStatus MFX_VppInterface::FillParameters()
         /* No other instances before PreENC DownSampling. Fill VideoParams */
 
         // input frame info
-        m_videoParams.vpp.In.FourCC = MFX_FOURCC_NV12;
+        m_videoParams.vpp.In.FourCC       = MFX_FOURCC_NV12;
         m_videoParams.vpp.In.ChromaFormat = MFX_CHROMAFORMAT_YUV420;
-        m_videoParams.vpp.In.PicStruct = m_pAppConfig->nPicStruct;
+        m_videoParams.vpp.In.PicStruct    = m_pAppConfig->nPicStruct;
 
         sts = ConvertFrameRate(m_pAppConfig->dFrameRate, &m_videoParams.vpp.In.FrameRateExtN, &m_videoParams.vpp.In.FrameRateExtD);
         MSDK_CHECK_STATUS(sts, "ConvertFrameRate failed");
@@ -153,7 +154,7 @@ mfxStatus MFX_VppInterface::FillParameters()
     m_VppDoNotUse->AlgList[3] = MFX_EXTBUFF_VPP_PROCAMP;        // turn off processing amplified (on by default)
     m_InitExtParams.push_back(reinterpret_cast<mfxExtBuffer *>(m_VppDoNotUse));
 
-    m_videoParams.ExtParam = &m_InitExtParams[0]; // vector is stored linearly in memory
+    m_videoParams.ExtParam    = &m_InitExtParams[0]; // vector is stored linearly in memory
     m_videoParams.NumExtParam = (mfxU16)m_InitExtParams.size();
 
     return sts;
@@ -288,6 +289,7 @@ mfxStatus MFX_DecodeInterface::FillParameters()
 {
     mfxStatus sts = MFX_ERR_NONE;
 
+    /* Share DECODE video parameters with other interfaces */
     m_pAppConfig->PipelineCfg.pDecodeVideoParam = &m_videoParams;
 
     m_videoParams.AsyncDepth = 1;

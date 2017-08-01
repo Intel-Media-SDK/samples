@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -216,13 +216,13 @@ mfxStatus CUserPipeline::Init(sInputParams *pParams)
 
         // in case of HW library (-hw key) we will firstly try to load HW plugin
         // in case of failure - we will try SW one
-        mfxIMPL impl = pParams->bUseHWLib ? MFX_IMPL_HARDWARE : MFX_IMPL_SOFTWARE;
+        mfxIMPL impl2 = pParams->bUseHWLib ? MFX_IMPL_HARDWARE : MFX_IMPL_SOFTWARE;
 
         if (AreGuidsEqual(MSDK_PLUGINGUID_NULL,pParams->pluginParams.pluginGuid))
         {
-            pParams->pluginParams.pluginGuid = msdkGetPluginUID(impl, MSDK_VENCODE, pParams->CodecId);
+            pParams->pluginParams.pluginGuid = msdkGetPluginUID(impl2, MSDK_VENCODE, pParams->CodecId);
         }
-        if (AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL) && impl == MFX_IMPL_HARDWARE)
+        if (AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL) && impl2 == MFX_IMPL_HARDWARE)
             pParams->pluginParams.pluginGuid = msdkGetPluginUID(MFX_IMPL_SOFTWARE, MSDK_VENCODE, pParams->CodecId);
         if (!AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
         {

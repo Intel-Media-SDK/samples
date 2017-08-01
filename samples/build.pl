@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 ##******************************************************************************
-##  Copyright(C) 2012-2013 Intel Corporation. All Rights Reserved.
+##  Copyright(C) 2012-2017 Intel Corporation. All Rights Reserved.
 ##  
 ##  The source code, information  and  material ("Material") contained herein is
 ##  owned  by Intel Corporation or its suppliers or licensors, and title to such
@@ -55,6 +55,8 @@ my $enable_v4l2 = "no";
 my $enable_mondello = "no";
 my $enable_ffmpeg = "yes";
 my $enable_opencl = "yes";
+my $enable_ps = "no";
+my $enable_ff = "no";
 my $prefix = "";
 my $test  = "";
 my $verb  = "";
@@ -92,7 +94,7 @@ my @list_config    = qw(release debug);
 
 sub usage {
   print "\n";
-  print "Copyright (c) 2012-2015 Intel Corporation. All rights reserved.\n";
+  print "Copyright (c) 2012-2017 Intel Corporation. All rights reserved.\n";
   print "This script performs Intel(R) Media SDK Samples projects creation and build.\n\n";
   print "Usage: perl build.pl --cmake=ARCH.GENERATOR.CONFIG [options]\n";
   print "\n";
@@ -121,6 +123,7 @@ sub usage {
   print "\t--enable-mondello=yes|no - enable MOndello/v4l2 support [default: $enable_mondello]\n";
   print "\t--enable-ffmpeg=yes|no  - build ffmpeg dependent targets [default: $enable_ffmpeg]\n";
   print "\t--enable-opencl=yes|no  - build OpenCL dependent targets [default: $enable_opencl]\n";
+
   print "\t--prefix=PATH - set install prefix\n";
   print "\n";
   print "Examples:\n";
@@ -152,6 +155,8 @@ GetOptions (
   '--enable-mondello=s' => \$enable_mondello,
   '--enable-ffmpeg=s' => \$enable_ffmpeg,
   '--enable-opencl=s' => \$enable_opencl,
+  '--enable-ps=s' => \$enable_ps,
+  '--enable-ff=s' => \$enable_ff,
   '--prefix=s' => \$prefix
 );
 
@@ -174,7 +179,9 @@ if(in_array(\@list_arch, $build{'arch'}) and
    in_array(\@list_yesno, $enable_v4l2) and
    in_array(\@list_yesno, $enable_mondello) and
    in_array(\@list_yesno, $enable_ffmpeg) and
-   in_array(\@list_yesno, $enable_opencl)) {
+   in_array(\@list_yesno, $enable_opencl) and
+   in_array(\@list_yesno, $enable_ps) and 
+   in_array(\@list_yesno, $enable_ff)) {
    $configuration_valid = 1;
 }
 
@@ -208,6 +215,8 @@ $cmake_cmd_gen.= "-DENABLE_V4L2:STRING=" . (($enable_v4l2 eq "yes") ? "ON": "OFF
 $cmake_cmd_gen.= "-DENABLE_MONDELLO:STRING=" . (($enable_mondello eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_FFMPEG:STRING=" . (($enable_ffmpeg eq "yes") ? "ON": "OFF") . " ";
 $cmake_cmd_gen.= "-DENABLE_OPENCL:STRING=" . (($enable_opencl eq "yes") ? "ON": "OFF") . " ";
+$cmake_cmd_gen.= "-DENABLE_PS:STRING=" . (($enable_ps eq "yes") ? "ON": "OFF") . " ";
+$cmake_cmd_gen.= "-DENABLE_FF:STRING=" . (($enable_ff eq "yes") ? "ON": "OFF") . " ";
 
 $cmake_cmd_gen.= "-DCMAKE_INSTALL_PREFIX=$prefix " if $prefix ne "";
 

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -18,13 +18,14 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 \**********************************************************************************/
 
 #include "pipeline_fei.h"
+#include "version.h"
 
 mfxStatus CheckOptions(AppConfig* pConfig);
 mfxStatus CheckDRCParams(AppConfig* pConfig);
 
 void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
 {
-    msdk_printf(MSDK_STRING("AVC FEI Encoding Sample Version %s\n\n"), MSDK_SAMPLE_VERSION);
+    msdk_printf(MSDK_STRING("AVC FEI Encoding Sample Version %s\n\n"), GetMSDKSampleVersion().c_str());
 
     if (strErrorMessage)
     {
@@ -51,9 +52,9 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-l numSlices] - number of slices \n"));
     msdk_printf(MSDK_STRING("   [-x (-NumRefFrame) numRefs] - number of reference frames \n"));
     msdk_printf(MSDK_STRING("   [-qp qp_value] - QP value for frames (default is 26)\n"));
-    msdk_printf(MSDK_STRING("   [-num_active_P numRefs] - number of maximum allowed references for P frames (up to 4(default))\n"));
-    msdk_printf(MSDK_STRING("   [-num_active_BL0 numRefs] - number of maximum allowed backward references for B frames (up to 4(default))\n"));
-    msdk_printf(MSDK_STRING("   [-num_active_BL1 numRefs] - number of maximum allowed forward references for B frames (up to 2(default) for interlaced, 1(default) for progressive)\n"));
+    msdk_printf(MSDK_STRING("   [-num_active_P numRefs] - number of maximum allowed references for P frames (up to 4(default)); for PAK only limit is 16\n"));
+    msdk_printf(MSDK_STRING("   [-num_active_BL0 numRefs] - number of maximum allowed backward references for B frames (up to 4(default)); for PAK only limit is 16\n"));
+    msdk_printf(MSDK_STRING("   [-num_active_BL1 numRefs] - number of maximum allowed forward references for B frames (up to 2(default) for interlaced, 1(default) for progressive); for PAK only limit is 16\n"));
     msdk_printf(MSDK_STRING("   [-gop_opt closed|strict] - GOP optimization flags (can be used together)\n"));
     msdk_printf(MSDK_STRING("   [-trellis value] - bitfield: 0 = default, 1 = off, 2 = on for I frames, 4 = on for P frames, 8 = on for B frames (ENCODE only) (default is 0)\n"));
     msdk_printf(MSDK_STRING("   [-preenc ds_strength] - use extended FEI interface PREENC (RC is forced to constant QP)\n"));
@@ -71,13 +72,15 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-DecodedOrder] - output in decoded order (useful to dump streamout data in DecodedOrder). WARNING: all FEI interfaces expects frames to come in DisplayOrder.\n"));
     msdk_printf(MSDK_STRING("   [-mbctrl file] - use the input to set MB control for FEI (only ENC+PAK)\n"));
     msdk_printf(MSDK_STRING("   [-mbsize] - with this options size control fields will be used from MB control structure (only ENC+PAK)\n"));
-    msdk_printf(MSDK_STRING("   [-mvin file] - use this input to set MV predictor for FEI. PREENC and ENC (ENCODE) expect different structures\n"));
+    msdk_printf(MSDK_STRING("   [-mvin file] - use this input to set MV predictor for FEI. PREENC and ENC (ENCODE) expect different structures.\n"));
+    msdk_printf(MSDK_STRING("                  (by default ENCODE use display order input (unlike other interfaces), use EncodedOrder key to change input order)\n"));
     msdk_printf(MSDK_STRING("   [-repack_preenc_mv] - use this in pair with -mvin to import preenc MVout directly\n"));
     msdk_printf(MSDK_STRING("   [-mvout file] - use this to output MV predictors\n"));
     msdk_printf(MSDK_STRING("   [-mbcode file] - file to output per MB information (structure mfxExtFeiPakMBCtrl) for each frame\n"));
     msdk_printf(MSDK_STRING("   [-mbstat file] - file to output per MB distortions for each frame\n"));
     msdk_printf(MSDK_STRING("   [-mbqp file] - file to input per MB QPs the same for each frame\n"));
-    msdk_printf(MSDK_STRING("   [-repackctrl file] - file to input max encoded frame size,number of pass and delta qp for each frame(ENCODE only)\n "));
+    msdk_printf(MSDK_STRING("   [-repackctrl file] - file to input max encoded frame size,number of pass and delta qp for each frame(ENCODE only)\n"));
+    msdk_printf(MSDK_STRING("   [-weights file] - file to input weights for explicit weighted prediction (ENCODE only).\n"));
     msdk_printf(MSDK_STRING("   [-streamout file] - dump decode streamout structures\n"));
     msdk_printf(MSDK_STRING("   [-sys] - use system memory for surfaces (ENCODE only)\n"));
     msdk_printf(MSDK_STRING("   [-8x8stat] - set 8x8 block for statistic report, default is 16x16 (PREENC only)\n"));
@@ -99,7 +102,8 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-multi_pred_l0] - MVs from neighbor MBs will be used as predictors for L0 prediction list (ENC, ENCODE)\n"));
     msdk_printf(MSDK_STRING("   [-multi_pred_l1] - MVs from neighbor MBs will be used as predictors for L1 prediction list (ENC, ENCODE)\n"));
     msdk_printf(MSDK_STRING("   [-adjust_distortion] - if enabled adds a cost adjustment to distortion, default is RAW distortion (ENC, ENCODE)\n"));
-    msdk_printf(MSDK_STRING("   [-n_mvpredictors_l0 num] - number of MV predictors for l0 list, up to 4 is supported (default is 1) (ENC, ENCODE)\n"));
+    msdk_printf(MSDK_STRING("   [-n_mvpredictors_P_l0 num] - number of MV predictors for l0 list of P frames, up to 4 is supported (default is 1) (ENC, ENCODE)\n"));
+    msdk_printf(MSDK_STRING("   [-n_mvpredictors_B_l0 num] - number of MV predictors for l0 list of B frames, up to 4 is supported (default is 1) (ENC, ENCODE)\n"));
     msdk_printf(MSDK_STRING("   [-n_mvpredictors_l1 num] - number of MV predictors for l1 list, up to 4 is supported (default is 0) (ENC, ENCODE)\n"));
     msdk_printf(MSDK_STRING("   [-preenc_mvpredictors_l0 bit] - enable/disable l0 predictor (default is to use if l0 reference exists) (PREENC only)\n"));
     msdk_printf(MSDK_STRING("   [-preenc_mvpredictors_l1 bit] - enable/disable l1 predictor (default is to use if l1 reference exists) (PREENC only)\n"));
@@ -108,10 +112,10 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-dblk_idc value] - value of DisableDeblockingIdc (default is 0), in range [0,2]\n"));
     msdk_printf(MSDK_STRING("   [-dblk_alpha value] - value of SliceAlphaC0OffsetDiv2 (default is 0), in range [-6,6]\n"));
     msdk_printf(MSDK_STRING("   [-dblk_beta value] - value of SliceBetaOffsetDiv2 (default is 0), in range [-6,6]\n"));
-    msdk_printf(MSDK_STRING("   [-chroma_qpi_offset first_offset] - first offset used for chroma qp in range [-12, 12] (used in PPS, pass_headers should be set)\n"));
-    msdk_printf(MSDK_STRING("   [-s_chroma_qpi_offset second_offset] - second offset used for chroma qp in range [-12, 12] (used in PPS, pass_headers should be set)\n"));
-    msdk_printf(MSDK_STRING("   [-constrained_intra_pred_flag] - use constrained intra prediction (default is off, used in PPS, pass_headers should be set)\n"));
-    msdk_printf(MSDK_STRING("   [-transform_8x8_mode_flag] - enables 8x8 transform, by default only 4x4 is used (used in PPS, pass_headers should be set)\n"));
+    msdk_printf(MSDK_STRING("   [-chroma_qpi_offset first_offset] - first offset used for chroma qp in range [-12, 12] (used in PPS)\n"));
+    msdk_printf(MSDK_STRING("   [-s_chroma_qpi_offset second_offset] - second offset used for chroma qp in range [-12, 12] (used in PPS)\n"));
+    msdk_printf(MSDK_STRING("   [-constrained_intra_pred_flag] - use constrained intra prediction (default is off, used in PPS)\n"));
+    msdk_printf(MSDK_STRING("   [-transform_8x8_mode_flag] - enables 8x8 transform, by default only 4x4 is used (used in PPS)\n"));
     msdk_printf(MSDK_STRING("   [-dstw width]  - destination picture width, invokes VPP resizing\n"));
     msdk_printf(MSDK_STRING("   [-dsth height] - destination picture height, invokes VPP resizing\n"));
     msdk_printf(MSDK_STRING("   [-perf] - switch on performance mode (disabled file operations, simplified predictors repacking)\n"));
@@ -142,6 +146,8 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
         PTR = strInput[i] + 2;          \
     }                                   \
 }
+
+#define STR_ARRAY_LEN(str) (sizeof(str)/sizeof(str[0]))
 
 mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pConfig)
 {
@@ -176,7 +182,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
             }
             i++;
 
-            if (msdk_strlen(strInput[i]) < sizeof(pConfig->strSrcFile)){
+            if (msdk_strlen(strInput[i]) < STR_ARRAY_LEN(pConfig->strSrcFile)){
                 msdk_opt_read(strInput[i], pConfig->strSrcFile);
             }
             else{
@@ -271,6 +277,11 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-repackctrl")))
         {
             pConfig->repackctrlFile = strInput[i+1];
+            i++;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-weights")))
+        {
+            pConfig->weightsFile = strInput[i+1];
             i++;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-mbsize")))
@@ -449,17 +460,23 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
             i++;
             pConfig->InterSAD = (mfxU16)msdk_strtol(strInput[i], &stopCharacter, 16);
         }
-        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-n_mvpredictors_l0")))
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-n_mvpredictors_P_l0")))
         {
             i++;
-            pConfig->bNPredSpecified_l0 = true;
-            pConfig->NumMVPredictors[0] = (mfxU16)msdk_strtol(strInput[i], &stopCharacter, 10);
+            pConfig->bNPredSpecified_Pl0 = true;
+            pConfig->NumMVPredictors_Pl0 = (mfxU16)msdk_strtol(strInput[i], &stopCharacter, 10);
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-n_mvpredictors_B_l0")))
+        {
+            i++;
+            pConfig->bNPredSpecified_Bl0 = true;
+            pConfig->NumMVPredictors_Bl0 = (mfxU16)msdk_strtol(strInput[i], &stopCharacter, 10);
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-n_mvpredictors_l1")))
         {
             i++;
             pConfig->bNPredSpecified_l1 = true;
-            pConfig->NumMVPredictors[1] = (mfxU16)msdk_strtol(strInput[i], &stopCharacter, 10);
+            pConfig->NumMVPredictors_Bl1 = (mfxU16)msdk_strtol(strInput[i], &stopCharacter, 10);
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-preenc_mvpredictors_l0")))
         {
@@ -645,7 +662,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
                 break;
             case MSDK_CHAR('i'):
                 GET_OPTION_POINTER(strArgument);
-                if (msdk_strlen(strArgument) < sizeof(pConfig->strSrcFile)){
+                if (msdk_strlen(strArgument) < STR_ARRAY_LEN(pConfig->strSrcFile)){
                     msdk_strcopy(pConfig->strSrcFile, strArgument);
                 }else{
                     PrintHelp(strInput[0], MSDK_STRING("ERROR: Too long input filename (limit is 1023 characters)!"));
@@ -786,38 +803,44 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
     // if nv12 option wasn't specified we expect input YUV file in YUV420 color format
     if (!pConfig->ColorFormat)
     {
-        pConfig->ColorFormat = MFX_FOURCC_YV12;
+        pConfig->ColorFormat = MFX_FOURCC_I420;
     }
 
     // Check references lists limits
+    mfxU16 num_ref_limit = pConfig->bOnlyPAK ? MaxNumActiveRefPAK : MaxNumActiveRefP;
+
     if (pConfig->NumRefActiveP == 0)
     {
-        pConfig->NumRefActiveP = MaxNumActiveRefP;
+        pConfig->NumRefActiveP = num_ref_limit;
     }
-    else if (pConfig->NumRefActiveP > MaxNumActiveRefP)
+    else if (pConfig->NumRefActiveP > num_ref_limit)
     {
-        pConfig->NumRefActiveP = MaxNumActiveRefP;
-        msdk_printf(MSDK_STRING("\nWARNING: Unsupported number of P frame references, adjusted to maximum (%d)\n"), MaxNumActiveRefP);
+        pConfig->NumRefActiveP = num_ref_limit;
+        msdk_printf(MSDK_STRING("\nWARNING: Unsupported number of P frame references, adjusted to maximum (%d)\n"), num_ref_limit);
     }
+
+    num_ref_limit = pConfig->bOnlyPAK ? MaxNumActiveRefPAK : MaxNumActiveRefBL0;
 
     if (pConfig->NumRefActiveBL0 == 0)
     {
-        pConfig->NumRefActiveBL0 = MaxNumActiveRefBL0;
+        pConfig->NumRefActiveBL0 = num_ref_limit;
     }
-    else if (pConfig->NumRefActiveBL0 > MaxNumActiveRefBL0)
+    else if (pConfig->NumRefActiveBL0 > num_ref_limit)
     {
-        pConfig->NumRefActiveBL0 = MaxNumActiveRefBL0;
-        msdk_printf(MSDK_STRING("\nWARNING: Unsupported number of B frame backward references, adjusted to maximum (%d)\n"), MaxNumActiveRefBL0);
+        pConfig->NumRefActiveBL0 = num_ref_limit;
+        msdk_printf(MSDK_STRING("\nWARNING: Unsupported number of B frame backward references, adjusted to maximum (%d)\n"), num_ref_limit);
     }
+
+    num_ref_limit = pConfig->bOnlyPAK ? MaxNumActiveRefPAK : ((pConfig->nPicStruct == MFX_PICSTRUCT_PROGRESSIVE) ? MaxNumActiveRefBL1 : MaxNumActiveRefBL1_i);
 
     if (pConfig->NumRefActiveBL1 == 0)
     {
-        pConfig->NumRefActiveBL1 = (pConfig->nPicStruct == MFX_PICSTRUCT_PROGRESSIVE) ? MaxNumActiveRefBL1 : MaxNumActiveRefBL1_i;
+        pConfig->NumRefActiveBL1 = num_ref_limit;
     }
-    else if (pConfig->NumRefActiveBL1 > ((pConfig->nPicStruct == MFX_PICSTRUCT_PROGRESSIVE) ? MaxNumActiveRefBL1 : MaxNumActiveRefBL1_i))
+    else if (pConfig->NumRefActiveBL1 > num_ref_limit)
     {
-        pConfig->NumRefActiveBL1 = (pConfig->nPicStruct == MFX_PICSTRUCT_PROGRESSIVE) ? MaxNumActiveRefBL1 : MaxNumActiveRefBL1_i;
-        msdk_printf(MSDK_STRING("\nWARNING: Unsupported number of B frame forward references, adjusted to maximum (%d (%d for interlaced))\n"), MaxNumActiveRefBL1, MaxNumActiveRefBL1_i);
+        pConfig->NumRefActiveBL1 = num_ref_limit;
+        msdk_printf(MSDK_STRING("\nWARNING: Unsupported number of B frame forward references, adjusted to maximum %d\n"), num_ref_limit);
     }
 
     if (pConfig->nPicStruct == MFX_PICSTRUCT_UNKNOWN
@@ -933,7 +956,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         return MFX_ERR_UNSUPPORTED;
     }
 
-    if (pConfig->NumMVPredictors[0] > MaxFeiEncMVPNum || pConfig->NumMVPredictors[1] > MaxFeiEncMVPNum){
+    if (pConfig->NumMVPredictors_Pl0 > MaxFeiEncMVPNum || pConfig->NumMVPredictors_Bl0 > MaxFeiEncMVPNum || pConfig->NumMVPredictors_Bl1 > MaxFeiEncMVPNum){
         if (bAlrShownHelp)
             msdk_printf(MSDK_STRING("\nERROR: Unsupported value number of MV predictors (4 is maximum)!\n"));
         else
@@ -1002,7 +1025,12 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         msdk_printf(MSDK_STRING("           could be non-bitexact with last frame in FEI ENCODE with Display Order!\n"));
     }
 
-    if (pConfig->bPerfMode && (pConfig->mvinFile || pConfig->mvoutFile || pConfig->mbctrinFile || pConfig->mbstatoutFile || pConfig->mbcodeoutFile || pConfig->mbQpFile || pConfig->repackctrlFile || pConfig->decodestreamoutFile))
+    if (pConfig->bPREENC || pConfig->bENCPAK || pConfig->bOnlyENC || pConfig->bOnlyPAK)
+    {
+        pConfig->EncodedOrder = true;
+    }
+
+    if (pConfig->bPerfMode && (pConfig->mvinFile || pConfig->mvoutFile || pConfig->mbctrinFile || pConfig->mbstatoutFile || pConfig->mbcodeoutFile || pConfig->mbQpFile || pConfig->repackctrlFile || pConfig->decodestreamoutFile || pConfig->weightsFile))
     {
         msdk_printf(MSDK_STRING("\nWARNING: All file operations would be ignored in performance mode!\n"));
 
@@ -1014,14 +1042,52 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         pConfig->mbQpFile            = NULL;
         pConfig->repackctrlFile      = NULL;
         pConfig->decodestreamoutFile = NULL;
+        pConfig->weightsFile         = NULL;
     }
 
-    if (pConfig->bENCODE || pConfig->bENCPAK || pConfig->bOnlyENC || pConfig->bOnlyPAK){
+    if (pConfig->bENCODE || pConfig->bENCPAK || pConfig->bOnlyENC || pConfig->bOnlyPAK)
+    {
         if (!pConfig->CodecProfile)
-            pConfig->CodecProfile = 100; // MFX_PROFILE_AVC_HIGH
+            pConfig->CodecProfile = MFX_PROFILE_AVC_HIGH;
 
         if (!pConfig->CodecLevel)
-            pConfig->CodecLevel = 41;    // MFX_LEVEL_AVC_41
+            pConfig->CodecLevel = MFX_LEVEL_AVC_41;
+    }
+
+    /* The following three settings affects partitions: Transform8x8ModeFlag, IntraPartMask, CodecProfile.
+       Code below adjusts these parameters to avoid contradictions.
+
+       If Transform8x8ModeFlag is set to true it has priority, else Profile settings have top priority.
+    */
+
+    bool is_8x8part_present_profile = !((pConfig->CodecProfile & 0xff) == MFX_PROFILE_AVC_MAIN || (pConfig->CodecProfile & 0xff) == MFX_PROFILE_AVC_BASELINE);
+    bool is_8x8part_present_custom  = !(pConfig->IntraPartMask & 0x06);
+
+    if (is_8x8part_present_profile != is_8x8part_present_custom || is_8x8part_present_custom != pConfig->Transform8x8ModeFlag)
+    {
+        bool part_to_set = pConfig->Transform8x8ModeFlag || is_8x8part_present_profile;
+        const msdk_char* transfType = part_to_set ? MSDK_STRING("8x8 present") : MSDK_STRING("8x8 not present");
+        msdk_printf(MSDK_STRING("\nWARNING: Partitions settings are contradictory!\n"));
+        msdk_printf(MSDK_STRING("           Intra partition is set to: %s.\n"), transfType);
+
+        /*
+        IntraPartMask description from manual
+            This value specifies what block and sub - block partitions are enabled for intra MBs.
+            0x01 - 16x16 is disabled
+            0x02 - 8x8   is disabled
+            0x04 - 4x4   is disabled
+        */
+        if (!part_to_set)
+            pConfig->IntraPartMask |= 0x06;
+        else
+            pConfig->IntraPartMask ^= pConfig->IntraPartMask & 0x06;
+
+        pConfig->Transform8x8ModeFlag = part_to_set;
+
+        if (part_to_set && !is_8x8part_present_profile)
+        {
+            pConfig->CodecProfile = MFX_PROFILE_AVC_HIGH;
+        }
     }
 
     /* One slice by default */
@@ -1071,9 +1137,8 @@ int main(int argc, char *argv[])
 
     msdk_printf(MSDK_STRING("Processing started\n"));
 
-    msdk_tick startTime;
     msdk_tick frequency = msdk_time_get_frequency();
-    startTime = msdk_time_get_tick();
+    msdk_tick startTime = msdk_time_get_tick();
 
     for (;;)
     {
@@ -1137,13 +1202,6 @@ mfxStatus CheckDRCParams(AppConfig* pConfig)
     {
         return MFX_ERR_NONE;
     }
-
-    /*
-    if (pConfig->bENCPAK || pConfig->bOnlyENC || pConfig->bOnlyPAK || pConfig->bPREENC)
-    {
-        fprintf(stderr, "ERROR: Only ENCODE supports Dynamic Resolution Change\n");
-        return MFX_ERR_UNSUPPORTED;
-    } */
 
     for (mfxU32 i = 0; i < pConfig->DRCqueue.size(); ++i)
     {

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -82,6 +82,9 @@ enum {
     CODEC_MVC = MFX_MAKEFOURCC('M','V','C',' '),
 };
 
+#define MFX_CODEC_DUMP MFX_MAKEFOURCC('D','U','M','P')
+#define MFX_CODEC_RGB4 MFX_FOURCC_RGB4
+
 enum
 {
     MFX_FOURCC_IMC3         = MFX_MAKEFOURCC('I','M','C','3'),
@@ -90,7 +93,8 @@ enum
     MFX_FOURCC_YUV422H      = MFX_MAKEFOURCC('4','2','2','H'),
     MFX_FOURCC_YUV422V      = MFX_MAKEFOURCC('4','2','2','V'),
     MFX_FOURCC_YUV444       = MFX_MAKEFOURCC('4','4','4','P'),
-    MFX_FOURCC_RGBP         = MFX_MAKEFOURCC('R','G','B','P')
+    MFX_FOURCC_RGBP         = MFX_MAKEFOURCC('R','G','B','P'),
+    MFX_FOURCC_I420         = MFX_MAKEFOURCC('I','4','2','0')
 };
 
 bool IsDecodeCodecSupported(mfxU32 codecFormat);
@@ -105,7 +109,7 @@ public :
     virtual ~CSmplYUVReader();
 
     virtual void Close();
-    virtual mfxStatus Init(std::list<msdk_string> inputs, mfxU32 ColorFormat);
+    virtual mfxStatus Init(std::list<msdk_string> inputs, mfxU32 ColorFormat, bool shouldShiftP010=false);
     virtual mfxStatus LoadNextFrame(mfxFrameSurface1* pSurface);
     virtual void Reset();
     mfxU32 m_ColorFormat; // color format of input YUV data, YUV420 or NV12
@@ -114,6 +118,7 @@ protected:
 
     std::vector<FILE*> m_files;
 
+    bool shouldShiftP010High;
     bool m_bInited;
 };
 
@@ -571,7 +576,7 @@ bool skip(const Buf_t *&buf, Length_t &length, Length_t step)
 //do not link MediaSDK dispatched if class not used
 struct MSDKAdapter {
     // returns the number of adapter associated with MSDK session, 0 for SW session
-    static mfxU32 GetNumber(mfxSession session = 0) {
+    static mfxU32 GetNumber(mfxSession session, mfxIMPL implVia = 0) {
         mfxU32 adapterNum = 0; // default
         mfxIMPL impl = MFX_IMPL_SOFTWARE; // default in case no HW IMPL is found
 
@@ -587,7 +592,7 @@ struct MSDKAdapter {
             memset(&auxSession, 0, sizeof(auxSession));
 
             mfxVersion ver = { {1, 1 }}; // minimum API version which supports multiple devices
-            MFXInit(MFX_IMPL_HARDWARE_ANY, &ver, &auxSession);
+            MFXInit(MFX_IMPL_HARDWARE_ANY | implVia, &ver, &auxSession);
             MFXQueryIMPL(auxSession, &impl);
             MFXClose(auxSession);
         }
@@ -680,10 +685,12 @@ template<size_t S>
     {
         value[0]=0;
     #if defined(_WIN32) || defined(_WIN64)
-        return (0 == _tcscpy_s(value, string))? MFX_ERR_NONE: MFX_ERR_UNKNOWN;
+        value[S - 1] = 0;
+        return (0 == _tcsncpy_s(value, string,S-1))? MFX_ERR_NONE: MFX_ERR_UNKNOWN;
     #else
         if (strlen(string) < S) {
             strncpy(value, string, S-1);
+            value[S - 1] = 0;
             return MFX_ERR_NONE;
         }
         return MFX_ERR_UNKNOWN;

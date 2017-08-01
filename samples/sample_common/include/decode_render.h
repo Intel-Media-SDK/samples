@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -69,6 +69,7 @@ public:
     virtual mfxStatus Init(sWindowParams pWParams);
     virtual mfxStatus RenderFrame(mfxFrameSurface1 *pSurface, mfxFrameAllocator *pmfxAlloc);
     virtual VOID UpdateTitle(double fps);
+    void Close();
 
     HWND GetWindowHandle();
 
@@ -83,7 +84,13 @@ public:
 protected:
     void AdjustWindowRect(RECT *rect);
 
+    mfxStatus AllocateShiftedSurfaceIfNeeded(const mfxFrameSurface1* refSurface,mfxFrameAllocator* allocator);
+    mfxFrameAllocResponse shiftSurfaceResponse;
+    mfxFrameSurface1 shiftedSurface;
+    mfxFrameAllocator* pAllocator;
+
     CHWDevice *m_hwdev;
+
 
     sWindowParams       m_sWindowParams;
     HWND                m_Hwnd;

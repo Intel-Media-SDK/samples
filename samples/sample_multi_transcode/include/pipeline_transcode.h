@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -68,7 +68,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
     #define MSDK_OCL_ROTATE_PLUGIN  MSDK_STRING("libsample_plugin_opencl.so")
 #endif
 
-#define MFX_FOURCC_DUMP MFX_MAKEFOURCC('D','U','M','P')
 #define MAX_PREF_LEN    256
 
 namespace TranscodingSample
@@ -83,6 +82,12 @@ namespace TranscodingSample
         VppComp,           // means that pipeline makes vpp composition + encode and get data from shared buffer
         VppCompOnly,       // means that pipeline makes vpp composition and get data from shared buffer
         VppCompOnlyEncode  // means that pipeline makes vpp composition + encode and get data from shared buffer
+    };
+
+    enum VppCompDumpMode
+    {
+        NULL_RENDER_VPP_COMP = 1,
+        DUMP_FILE_VPP_COMP = 2
     };
 
     enum EFieldCopyMode
@@ -101,6 +106,7 @@ namespace TranscodingSample
         mfxU32 DstY;
         mfxU32 DstW;
         mfxU32 DstH;
+        mfxU16 TileId;
     };
 
     struct __sInputParams
@@ -118,11 +124,13 @@ namespace TranscodingSample
 
         msdk_char  strSrcFile[MSDK_MAX_FILENAME_LEN]; // source bitstream file
         msdk_char  strDstFile[MSDK_MAX_FILENAME_LEN]; // destination bitstream file
+        msdk_char  strDumpVppCompFile[MSDK_MAX_FILENAME_LEN]; // VPP composition output dump file
 
         // specific encode parameters
         mfxU16 nTargetUsage;
-        mfxF64 dFrameRate;
-        mfxF64 dEncoderFrameRate;
+        mfxF64 dDecoderFrameRateOverride;
+        mfxF64 dEncoderFrameRateOverride;
+        mfxF64 dVPPOutFramerate;
         mfxU32 nBitRate;
         mfxU16 nQuality; // quality parameter for JPEG encoder
         mfxU16 nDstWidth;  // destination picture width, specified if resizing required
@@ -143,6 +151,7 @@ namespace TranscodingSample
         mfxU32 FrameNumberPreference; // how many surfaces user wants
         mfxU32 MaxFrameNumber; // maximum frames for transcoding
         mfxU32 numSurf4Comp;
+        mfxU16 numTiles4Comp;
 
         mfxU16 nSlices; // number of slices for encoder initialization
         mfxU16 nMaxSliceSize; //maximum size of slice
@@ -154,6 +163,7 @@ namespace TranscodingSample
         mfxU16 GopRefDist;
         mfxU16 NumRefFrame;
         mfxU16 nBRefType;
+        mfxU16 RepartitionCheckMode;
 
         mfxU16 CodecLevel;
         mfxU16 CodecProfile;
@@ -175,6 +185,7 @@ namespace TranscodingSample
         mfxU32 nFPS; // limit transcoding to the number of frames per second
 
         mfxU32 statisticsWindowSize;
+        FILE* statisticsLogFile;
 
         bool bLABRC; // use look ahead bitrate control algorithm
         mfxU16 nLADepth; // depth of the look ahead bitrate control  algorithm
@@ -185,6 +196,12 @@ namespace TranscodingSample
         mfxU16 nQPP;
         mfxU16 nQPB;
 
+#if _MSDK_API >= MSDK_API(1,22)
+        std::vector<mfxExtEncoderROI> m_ROIData;
+
+        bool bDecoderPostProcessing;
+#endif //_MSDK_API >= MSDK_API(1,22)
+
         bool bOpenCL;
         mfxU16 reserved[4];
 
@@ -192,6 +209,9 @@ namespace TranscodingSample
         mfxU16 nVppCompDstY;
         mfxU16 nVppCompDstW;
         mfxU16 nVppCompDstH;
+        mfxU16 nVppCompSrcW;
+        mfxU16 nVppCompSrcH;
+        mfxU16 nVppCompTileId;
 
         mfxU32 DecoderFourCC;
         mfxU32 EncoderFourCC;
@@ -207,6 +227,8 @@ namespace TranscodingSample
         mfxI32  monitorType;
         bool shouldUseGreedyFormula;
         bool enableQSVFF;
+
+        mfxU16 nExtBRC;
 
 #if defined(LIBVA_WAYLAND_SUPPORT)
         mfxU16 nRenderWinX;
@@ -257,28 +279,51 @@ namespace TranscodingSample
     class CIOStat : public CTimeStatistics
     {
         public:
-            CIOStat() : CTimeStatistics()
+            CIOStat()
+              : CTimeStatistics()
+              , ofile(stdout)
             {
                 MSDK_ZERO_MEMORY(bufDir);
             }
 
-            CIOStat(const msdk_char *dir) : CTimeStatistics()
+            CIOStat(const msdk_char *dir)
+              : CTimeStatistics()
+              , ofile(stdout)
             {
-                msdk_strcopy(bufDir, dir);
+                msdk_strncopy_s(bufDir, MAX_PREF_LEN, dir, MAX_PREF_LEN - 1);
+                bufDir[MAX_PREF_LEN - 1] = 0;
+            }
+
+            ~CIOStat()
+            {
+            }
+
+            inline void SetOutputFile(FILE *file)
+            {
+                ofile = file;
             }
 
             inline void SetDirection(const msdk_char *dir)
             {
                 if (dir)
-                    msdk_strcopy(bufDir, dir);
+                {
+                    msdk_strncopy_s(bufDir, MAX_PREF_LEN, dir, MAX_PREF_LEN - 1);
+                    bufDir[MAX_PREF_LEN - 1] = 0;
+                }
             }
 
-            inline void PrintStatistics(mfxU32 numPipelineid)
+            inline void PrintStatistics(mfxU32 numPipelineid, mfxF64 target_framerate = -1 /*default stands for infinite*/)
             {
-                msdk_printf(MSDK_STRING("stat[%llu]: %s=%d;Total=%.3lf;Samples=%lld;StdDev=%.3lf;Min=%.3lf;Max=%.3lf;Avg=%.3lf\n"),
-                    rdtsc(),bufDir,numPipelineid,totalTime*1000,numMeasurements,GetTimeStdDev()*1000,minTime*1000,maxTime*1000,GetAvgTime()*1000);
+                msdk_fprintf(ofile, MSDK_STRING("stat[%d.%llu]: %s=%d;Framerate=%.3f;Total=%.3lf;Samples=%lld;StdDev=%.3lf;Min=%.3lf;Max=%.3lf;Avg=%.3lf\n"),
+                    msdk_get_current_pid(), rdtsc(),
+                    bufDir, numPipelineid,
+                    target_framerate,
+                    totalTime*1000, numMeasurements,
+                    GetTimeStdDev()*1000, minTime*1000, maxTime*1000, GetAvgTime()*1000);
+                fflush(ofile);
             }
         protected:
+            FILE*     ofile;
             msdk_char bufDir[MAX_PREF_LEN];
     };
 
@@ -364,46 +409,28 @@ namespace TranscodingSample
         DISALLOW_COPY_AND_ASSIGN(SafetySurfaceBuffer);
     };
 
-    // External bitstream processing support
-    class BitstreamProcessor
-    {
-    public:
-        BitstreamProcessor() {}
-        virtual ~BitstreamProcessor() {}
-        virtual mfxStatus PrepareBitstream() = 0;
-        virtual mfxStatus GetInputBitstream(mfxBitstream **pBitstream) = 0;
-        virtual mfxStatus ProcessOutputBitstream(mfxBitstream* pBitstream) = 0;
-    };
-
-    class FileBitstreamProcessor : public BitstreamProcessor
+    class FileBitstreamProcessor
     {
     public:
         FileBitstreamProcessor();
         virtual ~FileBitstreamProcessor();
-        virtual mfxStatus Init(msdk_char  *pStrSrcFile, msdk_char  *pStrDstFile);
-        virtual mfxStatus PrepareBitstream() {return MFX_ERR_NONE;}
+        virtual mfxStatus SetReader(std::auto_ptr<CSmplBitstreamReader>& reader);
+        virtual mfxStatus SetReader(std::auto_ptr<CSmplYUVReader>& reader);
+        virtual mfxStatus SetWriter(std::auto_ptr<CSmplBitstreamWriter>& writer);
         virtual mfxStatus GetInputBitstream(mfxBitstream **pBitstream);
+        virtual mfxStatus GetInputFrame(mfxFrameSurface1 *pSurface);
         virtual mfxStatus ProcessOutputBitstream(mfxBitstream* pBitstream);
+        virtual mfxStatus ResetInput();
+        virtual mfxStatus ResetOutput();
 
     protected:
         std::auto_ptr<CSmplBitstreamReader> m_pFileReader;
+        std::auto_ptr<CSmplYUVReader> m_pYUVFileReader;
         // for performance options can be zero
         std::auto_ptr<CSmplBitstreamWriter> m_pFileWriter;
         mfxBitstream m_Bitstream;
     private:
         DISALLOW_COPY_AND_ASSIGN(FileBitstreamProcessor);
-    };
-
-    // Bitstream processing with reset input and output files support
-    class FileBitstreamProcessor_WithReset : public FileBitstreamProcessor
-    {
-    public:
-        virtual mfxStatus Init(msdk_char *pStrSrcFile, msdk_char *pStrDstFile);
-        virtual mfxStatus ResetInput();
-        virtual mfxStatus ResetOutput();
-    protected:
-        std::vector<msdk_char> m_pSrcFile;
-        std::vector<msdk_char> m_pDstFile;
     };
 
     // Bitstream is external via BitstreamProcessor
@@ -418,7 +445,7 @@ namespace TranscodingSample
                                void* hdl,
                                CTranscodingPipeline *pParentPipeline,
                                SafetySurfaceBuffer  *pBuffer,
-                               BitstreamProcessor   *pBSProc);
+                               FileBitstreamProcessor   *pBSProc);
 
         // frames allocation is suspended for heterogeneous pipeline
         virtual mfxStatus CompleteInit();
@@ -435,10 +462,10 @@ namespace TranscodingSample
         { MSDK_CHECK_POINTER(m_pmfxSession.get(), MFX_ERR_NULL_PTR); return m_pmfxSession->QueryVersion(version); };
         inline mfxU32 GetPipelineID(){return m_nID;}
         inline void SetPipelineID(mfxU32 id){m_nID = id;}
-
+        void StopOverlay();
+        bool IsOverlayUsed();
     protected:
         virtual mfxStatus CheckRequiredAPIVersion(mfxVersion& version, sInputParams *pParams);
-        virtual mfxStatus CheckExternalBSProcessor(BitstreamProcessor   *pBSProc);
 
         virtual mfxStatus Decode();
         virtual mfxStatus Encode();
@@ -448,6 +475,10 @@ namespace TranscodingSample
         virtual mfxStatus VPPOneFrame(ExtendedSurface *pSurfaceIn, ExtendedSurface *pExtSurface);
         virtual mfxStatus EncodeOneFrame(ExtendedSurface *pExtSurface, mfxBitstream *pBS);
         virtual mfxStatus PreEncOneFrame(ExtendedSurface *pInSurface, ExtendedSurface *pOutSurface);
+
+#if _MSDK_API >= MSDK_API(1,22)
+        mfxStatus AddExtRoiBufferToCtrl(mfxEncodeCtrl **ppCtrl);
+#endif // _MSDK_API >= MSDK_API(1,22)
 
         virtual mfxStatus DecodePreInit(sInputParams *pParams);
         virtual mfxStatus VPPPreInit(sInputParams *pParams);
@@ -472,6 +503,7 @@ namespace TranscodingSample
         void      FreeFrames();
 
         void      FreePreEncAuxPool();
+        mfxStatus LoadStaticSurface();
 
         mfxFrameSurface1* GetFreeSurface(bool isDec, mfxU64 timeout);
         mfxU32 GetFreeSurfacesCount(bool isDec);
@@ -495,6 +527,7 @@ namespace TranscodingSample
         mfxStatus AllocateSufficientBuffer(mfxBitstream* pBS);
         mfxStatus PutBS();
 
+        mfxStatus DumpSurface2File(mfxFrameSurface1* pSurface);
         mfxStatus Surface2BS(ExtendedSurface* pSurf,mfxBitstream* pBS, mfxU32 fourCC);
         mfxStatus NV12toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
         mfxStatus RGB4toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
@@ -533,6 +566,9 @@ namespace TranscodingSample
 
         mfxU32                          m_numEncoders;
 
+        CSmplYUVWriter                  m_dumpVppCompFileWriter;
+        mfxU32                          m_vppCompDumpRenderMode;
+
 #if defined(_WIN32) || defined(_WIN64)
         CDecodeD3DRender*               m_hwdev4Rendering;
 #else
@@ -552,6 +588,8 @@ namespace TranscodingSample
         typedef std::list<ExtendedBS*>       BSList;
         BSList  m_BSPool;
 
+        bool                           m_bStopOverlay;
+
         mfxVideoParam                  m_mfxDecParams;
         mfxVideoParam                  m_mfxEncParams;
         mfxVideoParam                  m_mfxVppParams;
@@ -563,6 +601,7 @@ namespace TranscodingSample
         RotateParam                    m_RotateParam;
         mfxVideoParam                  m_mfxPreEncParams;
         mfxU32                         m_nTimeout;
+        bool                           m_bUseOverlay;
         // various external buffers
         // for disabling VPP algorithms
         mfxExtVPPDoNotUse m_VppDoNotUse;
@@ -571,6 +610,9 @@ namespace TranscodingSample
         bool m_bOwnMVCSeqDescMemory; // true if the pipeline owns memory allocated for MVCSeqDesc structure fields
 
         mfxExtVPPComposite       m_VppCompParams;
+#if _MSDK_API >= MSDK_API(1,22)
+        mfxExtDecVideoProcessing m_decPostProcessing;
+#endif //_MSDK_API >= MSDK_API(1,22)
 
         mfxExtLAControl          m_ExtLAControl;
         // for setting MaxSliceSize
@@ -618,6 +660,7 @@ namespace TranscodingSample
 
         mfxU32          m_NumFramesForReset;
         MSDKMutex       m_mReset;
+        MSDKMutex       m_mStopOverlay;
 
         bool isHEVCSW;
 
@@ -627,7 +670,7 @@ namespace TranscodingSample
         mfxU32                                m_MaxFramesForTranscode;
 
         // pointer to already extended bs processor
-        BitstreamProcessor                   *m_pBSProcessor;
+        FileBitstreamProcessor                   *m_pBSProcessor;
 
         msdk_tick m_nReqFrameTime; // time required to transcode one frame
 
@@ -638,6 +681,13 @@ namespace TranscodingSample
         CIOStat outputStatistics;
 
         bool shouldUseGreedyFormula;
+
+#if _MSDK_API >= MSDK_API(1,22)
+        // roi data
+        std::vector<mfxExtEncoderROI> m_ROIData;
+        mfxEncodeCtrl auxCtrl;
+        mfxExtBuffer *ext_params1[1];
+#endif //_MSDK_API >= MSDK_API(1,22)
     private:
         DISALLOW_COPY_AND_ASSIGN(CTranscodingPipeline);
 
@@ -648,7 +698,7 @@ namespace TranscodingSample
         // Pointer to the session's pipeline
         std::auto_ptr<CTranscodingPipeline> pPipeline;
         // Pointer to bitstream handling object
-        BitstreamProcessor *pBSProcessor;
+        FileBitstreamProcessor *pBSProcessor;
         // Session implementation type
         mfxIMPL implType;
 

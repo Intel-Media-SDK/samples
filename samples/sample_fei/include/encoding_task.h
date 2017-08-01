@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -73,7 +73,11 @@ struct setElem
                 case MFX_EXTBUFF_FEI_ENC_QP:
                 {
                     mfxExtFeiEncQP* pMbQP = reinterpret_cast<mfxExtFeiEncQP*>(buffers[i]);
+#if MFX_VERSION >= 1023
+                    pMbQP->NumMBAlloc = new_numMB;
+#else
                     pMbQP->NumQPAlloc = new_numMB;
+#endif
                 }
                 break;
 
@@ -116,6 +120,34 @@ struct setElem
         } // for (mfxU16 i = 0; i < NumExtParam; i += increment)
     }
 
+    void ResetSlices(mfxU16 widthMB, mfxU16 heightMB)
+    {
+        for (mfxU16 i = 0; i < buffers.size(); ++i)
+        {
+            switch (buffers[i]->BufferId)
+            {
+                case MFX_EXTBUFF_FEI_SLICE:
+                {
+                    mfxExtFeiSliceHeader* feiSliceHeader = reinterpret_cast<mfxExtFeiSliceHeader*>(buffers[i]);
+                    if (feiSliceHeader && feiSliceHeader->Slice)
+                    {
+                        // TODO: Improve slice divider
+                        mfxU16 nMBrows = (heightMB + feiSliceHeader->NumSlice - 1) / feiSliceHeader->NumSlice,
+                             nMBremain = heightMB;
+                        for (mfxU16 numSlice = 0; numSlice < feiSliceHeader->NumSlice; ++numSlice)
+                        {
+                            feiSliceHeader->Slice[numSlice].MBAddress = numSlice*(nMBrows*widthMB);
+                            feiSliceHeader->Slice[numSlice].NumMBs    = (std::min)(nMBrows, nMBremain)*widthMB;
+
+                            nMBremain -= nMBrows;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     void Destroy(mfxU16 num_of_fields)
     {
         for (mfxU16 i = 0; i < buffers.size(); /*i++*/)
@@ -153,7 +185,11 @@ struct setElem
                 {
                     mfxExtFeiEncQP* qps = reinterpret_cast<mfxExtFeiEncQP*>(buffers[i]);
                     for (mfxU32 fieldId = 0; fieldId < num_of_fields; fieldId++){
+#if MFX_VERSION >= 1023
+                        MSDK_SAFE_DELETE_ARRAY(qps[fieldId].MB);
+#else
                         MSDK_SAFE_DELETE_ARRAY(qps[fieldId].QP);
+#endif
                     }
                     MSDK_SAFE_DELETE_ARRAY(qps);
                     i += num_of_fields;
@@ -272,6 +308,14 @@ struct setElem
                 }
                 break;
 
+                case MFX_EXTBUFF_PRED_WEIGHT_TABLE:
+                {
+                    mfxExtPredWeightTable* feiWeightTable = reinterpret_cast<mfxExtPredWeightTable*>(buffers[i]);
+                    MSDK_SAFE_DELETE_ARRAY(feiWeightTable);
+                    i += num_of_fields;
+                }
+                break;
+
                 default:
                     ++i;
                     break;
@@ -309,6 +353,11 @@ struct IObuffs
     setElem in;
     setElem out;
 
+    // Those fields are used to store per-field buffers sets in single-field mode
+    std::vector<mfxExtBuffer*> enc_per_field_buffers_in[2];
+    std::vector<mfxExtBuffer*> enc_per_field_buffers_out[2];
+    std::vector<mfxExtBuffer*> pak_per_field_buffers_in[2];
+
     void Destroy(mfxU16 n_fields)
     {
         in.Destroy(n_fields);
@@ -326,9 +375,15 @@ struct IObuffs
         in.ResetMBnum(new_numMB, increment);
         out.ResetMBnum(new_numMB, increment);
     }
+
+    void ResetSlices(mfxU16 widthMB, mfxU16 heightMB)
+    {
+        in.ResetSlices(widthMB, heightMB);
+        out.ResetSlices(widthMB, heightMB);
+    }
 };
 
-/* This structure holds sets of input and output extended buffers
+/* This structure holds sets of input and output extension buffers
    required for frame processing by one of the FEI interfaces */
 
 struct bufSet
@@ -355,6 +410,11 @@ struct bufSet
     void ResetMBnum(mfxU32 new_numMB, bool both_fields)
     {
         PB_bufs.ResetMBnum(new_numMB, both_fields ? 1 : num_fields);
+    }
+
+    void ResetSlices(mfxU16 widthMB, mfxU16 heightMB)
+    {
+        PB_bufs.ResetSlices(widthMB, heightMB);
     }
 };
 
@@ -395,6 +455,211 @@ struct bufList
     }
 };
 
+/*
+   This class handles operations with extension buffers. It parses extension buffer set to components subsets.
+   It helps to handle specific cases like double/single field mode. ENC / PAK buffers sets.
+
+   PreENC doesn't support single-field mode
+*/
+
+class bufSetController
+{
+public:
+    enum
+    {
+        PREENC = 1,
+        ENC    = 2,
+        PAK    = 3,
+        ENCODE = 4
+    };
+
+    explicit bufSetController(bool is_single_field = false) : single_field_mode(is_single_field)
+    {}
+
+    mfxStatus InitializeController(bufSet* bufset, mfxU16 interf, bool is_I_frame, bool force_progressive = false)
+    {
+        MSDK_CHECK_POINTER(bufset, MFX_ERR_NULL_PTR);
+
+        mfxStatus sts = MFX_ERR_NONE;
+
+        std::vector<mfxExtBuffer*> * workSet_in = NULL, *workSet_out = NULL, *buffers_in = NULL, *buffers_out = NULL;
+#if MFX_VERSION >= 1023
+        std::vector<mfxExtBuffer*> PAK_buffers; // PAK input consists of subset of ENC input and output buffers
+#endif // MFX_VERSION >= 1023
+
+        switch (interf)
+        {
+        case PREENC:
+            workSet_in  = preenc_in;
+            workSet_out = preenc_out;
+            buffers_in  = is_I_frame ? &bufset->I_bufs.in.buffers  : &bufset->PB_bufs.in.buffers;
+            buffers_out = is_I_frame ? &bufset->I_bufs.out.buffers : &bufset->PB_bufs.out.buffers;
+            break;
+
+        case ENC:
+        case ENCODE:
+            workSet_in  = enc_in;
+            workSet_out = enc_out;
+            buffers_in  = is_I_frame ? &bufset->I_bufs.in.buffers  : &bufset->PB_bufs.in.buffers;
+            buffers_out = is_I_frame ? &bufset->I_bufs.out.buffers : &bufset->PB_bufs.out.buffers;
+            break;
+
+        case PAK:
+#if MFX_VERSION >= 1023
+            workSet_in = pak_in;
+            PAK_buffers = GetPAKBuffers(is_I_frame ? bufset->I_bufs : bufset->PB_bufs);
+            buffers_in = &PAK_buffers;
+#else
+            workSet_in  = pak_in;
+            workSet_out = pak_out;
+            buffers_in  = is_I_frame ? &bufset->I_bufs.out.buffers : &bufset->PB_bufs.out.buffers;
+            buffers_out = is_I_frame ? &bufset->I_bufs.in.buffers  : &bufset->PB_bufs.in.buffers;
+#endif // MFX_VERSION >= 1023
+            break;
+
+        default:
+            return MFX_ERR_UNDEFINED_BEHAVIOR;
+            break;
+        }
+
+        // PreENC's buffers management doesn't make difference between single/double-field mode.
+        // In case of mixed picstructs content, buffers sets are separated as for single-field,
+        // but only first set is used for encoding of progressive frames
+        if (force_progressive || (single_field_mode && interf != PREENC))
+        {
+            sts = CopyPerField(*buffers_in, workSet_in);
+            MSDK_CHECK_STATUS(sts, "CopyPerField failed");
+
+            if (buffers_out)
+            {
+                sts = CopyPerField(*buffers_out, workSet_out);
+                MSDK_CHECK_STATUS(sts, "CopyPerField failed");
+            }
+        }
+        else
+        {
+            // copy parameters to component's associated arrays
+            workSet_in[0].resize(buffers_in->size());
+            std::copy(buffers_in->begin(), buffers_in->end(), workSet_in[0].begin());
+
+            if (buffers_out)
+            {
+                workSet_out[0].resize(buffers_out->size());
+                std::copy(buffers_out->begin(), buffers_out->end(), workSet_out[0].begin());
+            }
+        }
+
+        return sts;
+    }
+
+    std::vector<mfxExtBuffer *> * GetBuffers(mfxU16 interf, mfxU32 field, bool input)
+    {
+        if (field > 1) return NULL;
+
+        if (!single_field_mode) { field = 0; } // In double-field mode both buffers are stored under [0] index
+
+        switch (interf)
+        {
+        case PREENC:
+            return input ? &preenc_in[0] : &preenc_out[0];
+            break;
+
+        case ENC:
+        case ENCODE:
+            return input ? &enc_in[field] : &enc_out[field];
+            break;
+
+        case PAK:
+#if MFX_VERSION >= 1023
+            return input ? &pak_in[field] : NULL;
+#else
+            return input ? &pak_in[field] : &pak_out[field];
+#endif // MFX_VERSION >= 1023
+            break;
+
+        default:
+            return NULL;
+            break;
+        }
+    }
+
+private:
+    mfxStatus CopyPerField(const std::vector<mfxExtBuffer *>& buffers, std::vector<mfxExtBuffer*> * work_set)
+    {
+        // Clear old data
+        work_set[0].clear();
+        work_set[1].clear();
+
+        work_set[0].reserve(buffers.size() / 2);
+        work_set[1].reserve(buffers.size() / 2);
+
+        // For buffers which are field-based
+        std::map<mfxU32, mfxU32> buffers_count;
+
+        for (mfxU32 i = 0; i < buffers.size(); ++i)
+        {
+            if (buffers_count.find(buffers[i]->BufferId) == buffers_count.end())
+            {
+                // Put first buffer to first array
+                buffers_count[buffers[i]->BufferId] = 0;
+                work_set[0].push_back(buffers[i]);
+            }
+            else
+            {
+                // Put second buffer to second array
+                buffers_count[buffers[i]->BufferId]++;
+                if (buffers_count[buffers[i]->BufferId] > 1) { return MFX_ERR_UNDEFINED_BEHAVIOR; }
+                work_set[1].push_back(buffers[i]);
+            }
+        }
+
+        return MFX_ERR_NONE;
+    }
+
+    std::vector<mfxExtBuffer*> GetPAKBuffers(const IObuffs& io_bufs)
+    {
+        std::vector<mfxExtBuffer*> PAK_buffers;
+
+        // PAK input buffers includes MV, MBcode buffers from ENC output
+        // and PPS, SliceHeader from ENC input
+        for (int k = 0; k < 2; ++k)
+        {
+            const std::vector<mfxExtBuffer*> & buffers = k ? io_bufs.in.buffers : io_bufs.out.buffers;
+
+            for (mfxU16 i = 0; i < buffers.size(); ++i)
+            {
+                switch (buffers[i]->BufferId)
+                {
+                case MFX_EXTBUFF_FEI_ENC_MV:
+                case MFX_EXTBUFF_FEI_PAK_CTRL:
+                case MFX_EXTBUFF_FEI_PPS:
+                case MFX_EXTBUFF_FEI_SLICE:
+                    PAK_buffers.push_back(buffers[i]);
+                    break;
+
+                default:
+                    break;
+                }
+            }
+        }
+
+        return PAK_buffers;
+    }
+
+
+    // 0 - for first field / frame / double-field mode, 1 - for second field (only for single-field mode)
+    std::vector<mfxExtBuffer*> preenc_in[2];
+    std::vector<mfxExtBuffer*> preenc_out[2];
+    std::vector<mfxExtBuffer*> enc_in[2]; // for ENC and ENCODE (sample_fei doesn't support pipelines with ENC and ENCODE simultaneously)
+    std::vector<mfxExtBuffer*> enc_out[2];
+    std::vector<mfxExtBuffer*> pak_in[2];
+#if MFX_VERSION < 1023
+    std::vector<mfxExtBuffer*> pak_out[2];
+#endif
+
+    bool single_field_mode;
+};
+
 struct PreEncOutput
 {
     PreEncOutput()
@@ -428,6 +693,10 @@ struct iTaskParams
     mfxU16 NumRefActiveP;
     mfxU16 NumRefActiveBL0;
     mfxU16 NumRefActiveBL1;
+    mfxU16 NumMVPredictorsP;
+    mfxU16 NumMVPredictorsBL0;
+    mfxU16 NumMVPredictorsBL1;
+    bool   SingleFieldMode;
 
     mfxFrameSurface1 *InputSurf;
     mfxFrameSurface1 *ReconSurf;
@@ -444,6 +713,10 @@ struct iTaskParams
         , NumRefActiveP(0)
         , NumRefActiveBL0(0)
         , NumRefActiveBL1(0)
+        , NumMVPredictorsP(0)
+        , NumMVPredictorsBL0(0)
+        , NumMVPredictorsBL1(0)
+        , SingleFieldMode(false)
         , InputSurf(NULL)
         , ReconSurf(NULL)
         , DSsurface(NULL)
@@ -454,10 +727,11 @@ struct iTaskParams
 struct iTask
 {
     explicit iTask(const iTaskParams & task_params)
-        : encoded(false)
+        :
+          encoded(false)
         , bufs(NULL)
         , preenc_bufs(NULL)
-        , fullResSurface(NULL)
+        , ExtBuffersController(task_params.SingleFieldMode)
         , PicStruct(task_params.PicStruct)
         , BRefType(task_params.BRefType)
         , NumRefActiveP(task_params.NumRefActiveP)
@@ -482,6 +756,13 @@ struct iTask
         , m_longTermPicNum(PairU8(0, 0))
         , prevTask(NULL)
     {
+        NumMVPredictorsP[0]   = task_params.NumMVPredictorsP;
+        NumMVPredictorsP[1]   = task_params.NumMVPredictorsP;
+        NumMVPredictorsBL0[0] = task_params.NumMVPredictorsBL0;
+        NumMVPredictorsBL0[1] = task_params.NumMVPredictorsBL0;
+        NumMVPredictorsBL1[0] = task_params.NumMVPredictorsBL1;
+        NumMVPredictorsBL1[1] = task_params.NumMVPredictorsBL1;
+
         m_list0[0].Fill(0);
         m_list0[1].Fill(0);
         m_list1[0].Fill(0);
@@ -492,10 +773,14 @@ struct iTask
         m_initSizeList1[0] = 0;
         m_initSizeList1[1] = 0;
 
-        memset(&in,     0, sizeof(in));
-        memset(&out,    0, sizeof(out));
-        memset(&inPAK,  0, sizeof(inPAK));
-        memset(&outPAK, 0, sizeof(outPAK));
+        MSDK_ZERO_MEMORY(PREENC_in);
+        MSDK_ZERO_MEMORY(PREENC_out);
+
+        MSDK_ZERO_MEMORY(ENC_in);
+        MSDK_ZERO_MEMORY(ENC_out);
+
+        MSDK_ZERO_MEMORY(PAK_in);
+        MSDK_ZERO_MEMORY(PAK_out);
 
         /* Below initialized structures required for frames reordering */
         if (m_type[m_fid[0]] & MFX_FRAMETYPE_B)
@@ -511,40 +796,43 @@ struct iTask
         m_poc[0] = 2 * ((m_frameOrder - m_frameOrderIdr) & 0x7fffffff) + (TFIELD != m_fid[0]);
         m_poc[1] = 2 * ((m_frameOrder - m_frameOrderIdr) & 0x7fffffff) + (BFIELD != m_fid[0]);
 
+        /* Section below sets surfaces for all interfaces and increase locker each time (some of the surfaces get several increments).
+           In destructor all of of the surfaces' lockers will be decremented.
+        */
 
-        /* Fill information required for encoding */
-        if (task_params.InputSurf)
+        // PreENC with DownSampling present in pipeline
+        if (task_params.DSsurface && task_params.InputSurf)
         {
-            in.InSurface = task_params.InputSurf;
-            in.InSurface->Data.Locked++;
-        }
-
-        /* ENC and/or PAK */
-        if (task_params.ReconSurf && in.InSurface)
-        {
-            inPAK.InSurface = in.InSurface;
-            inPAK.InSurface->Data.Locked++;
-
-            /* ENC & PAK share same reconstructed/reference surface */
-            out.OutSurface = task_params.ReconSurf;
-            out.OutSurface->Data.Locked++;
-            outPAK.OutSurface = task_params.ReconSurf;
-            outPAK.OutSurface->Data.Locked++;
-        }
-
-        /* PreENC on downsampled surface */
-        if (task_params.DSsurface && in.InSurface)
-        {
-            // PREENC needs to be performed on downscaled surface
-            // For simplicity, let's just replace the original surface
-            fullResSurface = in.InSurface;
-
-            in.InSurface = task_params.DSsurface;
-            in.InSurface->Data.Locked++;
-
             // make sure picture structure has the initial value
             // surfaces are reused and VPP may change this parameter in certain configurations
-            in.InSurface->Info.PicStruct = fullResSurface->Info.PicStruct & 0xf;
+            task_params.DSsurface->Info.PicStruct = task_params.InputSurf->Info.PicStruct & 0xf;
+
+            PREENC_in.InSurface = task_params.DSsurface;
+            PREENC_in.InSurface->Data.Locked++;
+        }
+        // PreENC on full-res surface
+        else if (task_params.InputSurf)
+        {
+            PREENC_in.InSurface = task_params.InputSurf;
+            PREENC_in.InSurface->Data.Locked++;
+        }
+
+        if (task_params.InputSurf)
+        {
+            ENC_in.InSurface = task_params.InputSurf;
+            ENC_in.InSurface->Data.Locked++;
+
+            PAK_in.InSurface = task_params.InputSurf;
+            PAK_in.InSurface->Data.Locked++;
+        }
+
+        if (task_params.ReconSurf)
+        {
+            ENC_out.OutSurface = task_params.ReconSurf;
+            ENC_out.OutSurface->Data.Locked++;
+
+            PAK_out.OutSurface = task_params.ReconSurf;
+            PAK_out.OutSurface->Data.Locked++;
         }
     }
 
@@ -555,12 +843,12 @@ struct iTask
 
         ReleasePreEncOutput();
 
-        SAFE_DEC_LOCKER(in.InSurface);
-        /* In case of preenc + enc (+ pak) pipeline we need to do decrement manually for both interfaces*/
-        SAFE_DEC_LOCKER(inPAK.InSurface);
-        SAFE_DEC_LOCKER(fullResSurface);
-        SAFE_DEC_LOCKER(out.OutSurface);
-        SAFE_DEC_LOCKER(outPAK.OutSurface);
+        // Locker was set to each of the surfaces, so decrease every locker
+        SAFE_DEC_LOCKER(PREENC_in.InSurface);
+        SAFE_DEC_LOCKER(ENC_in.InSurface);
+        SAFE_DEC_LOCKER(PAK_in.InSurface);
+        SAFE_DEC_LOCKER(ENC_out.OutSurface);
+        SAFE_DEC_LOCKER(PAK_out.OutSurface);
     }
 
     /* This operator is used to store only necessary information from previous encoding */
@@ -580,6 +868,23 @@ struct iTask
         PicStruct         = task.PicStruct;
 
         return *this;
+    }
+
+    /* Sets recon_surf as reconstruct surface for ENC / PAK*/
+    void SetReconSurf(mfxFrameSurface1 * recon_surf)
+    {
+        if (recon_surf)
+        {
+            // Set appropriate frame order
+            recon_surf->Data.FrameOrder = m_frameOrder;
+
+            // Lock for each interface (symmetric unlock performed in destructor)
+            ENC_out.OutSurface = recon_surf;
+            ENC_out.OutSurface->Data.Locked++;
+
+            PAK_out.OutSurface = recon_surf;
+            PAK_out.OutSurface->Data.Locked++;
+        }
     }
 
     /* Release all output buffers from PreENC multicalls.
@@ -679,16 +984,22 @@ struct iTask
         }
     }
 
-    mfxENCInput  in;
-    mfxENCOutput out;
-    mfxPAKInput  inPAK;
-    mfxPAKOutput outPAK;
+    mfxENCInput  PREENC_in;
+    mfxENCOutput PREENC_out;
+
+    mfxENCInput  ENC_in;
+    mfxENCOutput ENC_out;
+
+    mfxPAKInput  PAK_in;
+    mfxPAKOutput PAK_out;
+
     BiFrameLocation m_loc;
     bool encoded;
     bufSet* bufs;
     bufSet* preenc_bufs;
     std::list<PreEncOutput> preenc_output;
-    mfxFrameSurface1 *fullResSurface;
+
+    bufSetController ExtBuffersController; // controls Extension Buffers management
 
     mfxU16 PicStruct;
     mfxU16 BRefType;
@@ -696,6 +1007,10 @@ struct iTask
     mfxU16 NumRefActiveP;   // limits of active
     mfxU16 NumRefActiveBL0; // references for
     mfxU16 NumRefActiveBL1; // reflists management
+
+    mfxU16 NumMVPredictorsP[2];        // first and second fields
+    mfxU16 NumMVPredictorsBL0[2];
+    mfxU16 NumMVPredictorsBL1[2];
 
     //..............................reflist control............................................
     ArrayDpbFrame   m_dpb[2];          // DPB state before encoding first and second fields
@@ -707,8 +1022,8 @@ struct iTask
     bool            m_fieldPicFlag;    // is interlaced frame
     PairI32         m_poc;             // POC of first and second field
 
-    mfxU32  m_frameOrderIdr;           // most recent idr frame in display order
-    mfxU32  m_frameOrderI;             // most recent i frame in display order
+    mfxU32  m_frameOrderIdr;           // most recent IDR frame in display order
+    mfxU32  m_frameOrderI;             // most recent I frame in display order
     mfxU32  m_frameOrder;              // current frame order in display order
     mfxU16  m_frameIdrCounter;         // number of IDR frames encoded
 
@@ -733,15 +1048,16 @@ struct iTask
     mfxI32  m_frameNumWrap;
 
     mfxU32  m_tid;              // temporal_id
-    mfxU32  m_tidx;             // temporal layer index (in acsending order of temporal_id)
+    mfxU32  m_tidx;             // temporal layer index (in ascending order of temporal_id)
 
     PairU8  m_longTermPicNum;
-    PairU8  m_reference;        // is refrence (short or long term) or not
+    PairU8  m_reference;        // is reference (short or long term) or not
     //.........................................................................................
 
     iTask* prevTask;
 };
 
+#if MFX_VERSION < 1023
 /* This structure represents state of DPB and reference lists of the task being processed */
 struct RefInfo
 {
@@ -768,8 +1084,9 @@ struct RefInfo
         }
     }
 };
+#endif // MFX_VERSION < 1023
 
-/* Group of functions below implements some usefull operations for current frame / field of the task:
+/* Group of functions below implements some useful operations for current frame / field of the task:
    Frame type extraction, field parity, POC */
 
 inline mfxU8 GetFirstField(const iTask& task)
@@ -805,6 +1122,17 @@ inline mfxU16 createType(const iTask& task)
 inline mfxU8 extractType(mfxU16 type, mfxU32 fieldId)
 {
     return fieldId ? (type >> 8) : (type & 255);
+}
+
+
+inline mfxU16 GetNumL0MVPs(const iTask& task, mfxU32 fieldId)
+{
+    return ((ExtractFrameType(task, fieldId) & MFX_FRAMETYPE_B) ? task.NumMVPredictorsBL0[fieldId] : task.NumMVPredictorsP[fieldId]);
+}
+
+inline mfxU16 GetNumL1MVPs(const iTask& task, mfxU32 fieldId)
+{
+    return ((ExtractFrameType(task, fieldId) & MFX_FRAMETYPE_B) ? task.NumMVPredictorsBL1[fieldId] : 0);
 }
 
 inline void InitNewDpbFrame(

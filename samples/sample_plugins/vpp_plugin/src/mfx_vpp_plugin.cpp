@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -443,8 +443,7 @@ mfxStatus MFXVideoVPPPlugin::Close(void)
         msdk_so_free(m_PluginModule);
         m_PluginModule = NULL;
     }
-    if (m_pPlugin)
-        m_pPlugin = 0;
+
     MSDK_SAFE_DELETE(m_pVPP1);
     MSDK_SAFE_DELETE(m_pVPP2);
 

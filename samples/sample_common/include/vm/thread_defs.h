@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -189,6 +189,7 @@ private:
     void operator=(const MSDKThread&);
 };
 
+mfxU32 msdk_get_current_pid();
 mfxStatus msdk_setrlimit_vmem(mfxU64 size);
 mfxStatus msdk_thread_get_schedtype(const msdk_char*, mfxI32 &type);
 void msdk_thread_printf_scheduling_help();

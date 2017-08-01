@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -94,12 +94,12 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
         if (m_InputParamsArray[m_InputParamsArray.size() -1].eModeExt == VppCompOnly)
         {
             /* Rendering case */
-            sts = m_hwdev->Init(NULL, 1, MSDKAdapter::GetNumber() );
+            sts = m_hwdev->Init(NULL, 1, MSDKAdapter::GetNumber(0,MFX_IMPL_VIA_D3D9) );
             m_InputParamsArray[m_InputParamsArray.size() -1].m_hwdev = m_hwdev.get();
         }
         else /* NO RENDERING*/
         {
-            sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber() );
+            sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber(0,MFX_IMPL_VIA_D3D9) );
         }
         MSDK_CHECK_STATUS(sts, "m_hwdev->Init failed");
         sts = m_hwdev->GetHandle(MFX_HANDLE_D3D9_DEVICE_MANAGER, (mfxHDL*)&hdl);
@@ -119,12 +119,12 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
         if (m_InputParamsArray[m_InputParamsArray.size() -1].eModeExt == VppCompOnly)
         {
             /* Rendering case */
-            sts = m_hwdev->Init(NULL, 1, MSDKAdapter::GetNumber() );
+            sts = m_hwdev->Init(NULL, 1, MSDKAdapter::GetNumber(0,MFX_IMPL_VIA_D3D11) );
             m_InputParamsArray[m_InputParamsArray.size() -1].m_hwdev = m_hwdev.get();
         }
         else /* NO RENDERING*/
         {
-            sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber() );
+            sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber(0,MFX_IMPL_VIA_D3D11) );
         }
         MSDK_CHECK_STATUS(sts, "m_hwdev->Init failed");
         sts = m_hwdev->GetHandle(MFX_HANDLE_D3D11_DEVICE, (mfxHDL*)&hdl);
@@ -155,7 +155,7 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
                 msdk_printf(MSDK_STRING("error: failed to initialize VAAPI device\n"));
                 return MFX_ERR_DEVICE_FAILED;
             }
-            sts = m_hwdev->Init(&params.monitorType, 1, MSDKAdapter::GetNumber() );
+            sts = m_hwdev->Init(&params.monitorType, 1, MSDKAdapter::GetNumber(0) );
             if (params.libvaBackend == MFX_LIBVA_DRM_MODESET) {
                 CVAAPIDeviceDRM* drmdev = dynamic_cast<CVAAPIDeviceDRM*>(m_hwdev.get());
                 pVAAPIParams->m_export_mode = vaapiAllocatorParams::CUSTOM_FLINK;
@@ -190,7 +190,7 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
                 msdk_printf(MSDK_STRING("error: failed to initialize VAAPI device\n"));
                 return MFX_ERR_DEVICE_FAILED;
             }
-            sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber());
+            sts = m_hwdev->Init(NULL, 0, MSDKAdapter::GetNumber(0));
         }
         if (libvaBackend != MFX_LIBVA_WAYLAND) {
         MSDK_CHECK_STATUS(sts, "m_hwdev->Init failed");
@@ -220,10 +220,11 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
     {
         /* Save params for VPP composition */
         sVppCompDstRect tempDstRect;
-        tempDstRect.DstX = m_InputParamsArray[jj].nVppCompDstX;
-        tempDstRect.DstY = m_InputParamsArray[jj].nVppCompDstY;
-        tempDstRect.DstW = m_InputParamsArray[jj].nVppCompDstW;
-        tempDstRect.DstH = m_InputParamsArray[jj].nVppCompDstH;
+        tempDstRect.DstX   = m_InputParamsArray[jj].nVppCompDstX;
+        tempDstRect.DstY   = m_InputParamsArray[jj].nVppCompDstY;
+        tempDstRect.DstW   = m_InputParamsArray[jj].nVppCompDstW;
+        tempDstRect.DstH   = m_InputParamsArray[jj].nVppCompDstH;
+        tempDstRect.TileId = m_InputParamsArray[jj].nVppCompTileId;
         m_VppDstRects.push_back(tempDstRect);
     }
 
@@ -237,11 +238,51 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
 
         std::auto_ptr<ThreadTranscodeContext> pThreadPipeline(new ThreadTranscodeContext);
         // extend BS processing init
-        m_InputParamsArray[i].nTimeout == 0 ? m_pExtBSProcArray.push_back(new FileBitstreamProcessor) :
-                                        m_pExtBSProcArray.push_back(new FileBitstreamProcessor_WithReset);
+        m_pExtBSProcArray.push_back(new FileBitstreamProcessor);
+
         pThreadPipeline->pPipeline.reset(CreatePipeline());
 
         pThreadPipeline->pBSProcessor = m_pExtBSProcArray.back();
+
+        std::auto_ptr<CSmplBitstreamReader> reader;
+        std::auto_ptr<CSmplYUVReader> yuvreader;
+        if (m_InputParamsArray[i].DecodeId == MFX_CODEC_VP9)
+        {
+            reader.reset(new CIVFFrameReader());
+        }
+        else if (m_InputParamsArray[i].DecodeId == MFX_CODEC_RGB4)
+        {
+            // YUV reader for RGB4 overlay
+            yuvreader.reset(new CSmplYUVReader());
+        }
+        else
+        {
+            reader.reset(new CSmplBitstreamReader());
+        }
+
+        if (reader.get())
+        {
+            sts = reader->Init(m_InputParamsArray[i].strSrcFile);
+            MSDK_CHECK_STATUS(sts, "reader->Init failed");
+            sts = m_pExtBSProcArray.back()->SetReader(reader);
+            MSDK_CHECK_STATUS(sts, "m_pExtBSProcArray.back()->SetReader failed");
+        }
+        else if (yuvreader.get())
+        {
+            std::list<msdk_string> input;
+            input.push_back(m_InputParamsArray[i].strSrcFile);
+            sts = yuvreader->Init(input, MFX_FOURCC_RGB4);
+            MSDK_CHECK_STATUS(sts, "m_YUVReader->Init failed");
+            sts = m_pExtBSProcArray.back()->SetReader(yuvreader);
+            MSDK_CHECK_STATUS(sts, "m_pExtBSProcArray.back()->SetReader failed");
+        }
+
+        std::auto_ptr<CSmplBitstreamWriter> writer(new CSmplBitstreamWriter());
+        sts = writer->Init(m_InputParamsArray[i].strDstFile);
+
+        sts = m_pExtBSProcArray.back()->SetWriter(writer);
+        MSDK_CHECK_STATUS(sts, "m_pExtBSProcArray.back()->SetWriter failed");
+
         if (Sink == m_InputParamsArray[i].eMode)
         {
             /* N_to_1 mode */
@@ -258,8 +299,6 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
                 pBuffer = m_pBufferArray[m_pBufferArray.size() - 1];
             }
             pSinkPipeline = pThreadPipeline->pPipeline.get();
-            sts = m_pExtBSProcArray.back()->Init(m_InputParamsArray[i].strSrcFile, NULL);
-            MSDK_CHECK_STATUS(sts, "m_pExtBSProcArray.back failed");
         }
         else if (Source == m_InputParamsArray[i].eMode)
         {
@@ -274,13 +313,9 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
                 pBuffer = m_pBufferArray[BufCounter];
                 BufCounter++;
             }
-            sts = m_pExtBSProcArray.back()->Init(NULL, m_InputParamsArray[i].strDstFile);
-            MSDK_CHECK_STATUS(sts, "m_pExtBSProcArray.back failed");
         }
         else
         {
-            sts = m_pExtBSProcArray.back()->Init(m_InputParamsArray[i].strSrcFile, m_InputParamsArray[i].strDstFile);
-            MSDK_CHECK_STATUS(sts, "m_pExtBSProcArray.back failed");
             pBuffer = NULL;
         }
 
@@ -359,21 +394,53 @@ void Launcher::Run()
     // get parallel sessions parameters
     totalSessions = (mfxU32) m_pSessionArray.size();
 
-    mfxU32 i;
     mfxStatus sts;
 
     MSDKThread * pthread = NULL;
 
-    for (i = 0; i < totalSessions; i++)
+    for (mfxU32 i = 0; i < totalSessions; i++)
     {
         pthread = new MSDKThread(sts, ThranscodeRoutine, (void *)m_pSessionArray[i]);
 
         m_HDLArray.push_back(pthread);
     }
 
-    for (i = 0; i < m_pSessionArray.size(); i++)
+    // Need to determine overlay threads count first
+    size_t nOverlayThreads = 0;
+    for (size_t i = 0; i < m_pSessionArray.size(); i++)
     {
-        m_HDLArray[i]->Wait();
+        if (m_pSessionArray[i]->pPipeline->IsOverlayUsed())
+            nOverlayThreads++;
+    }
+
+    // Transcoding threads waiting cycle
+    while (m_HDLArray.size())
+    {
+        for (MSDKThreadsIterator it = m_HDLArray.begin(); it != m_HDLArray.end(); it++)
+        {
+            sts = (*it)->TimedWait(1);
+            if (sts <= 0)
+            {
+                MSDK_SAFE_DELETE(*it);
+                m_HDLArray.remove(*it);
+                break;
+            }
+        }
+
+        // Overlay threads stop last (in N:1 case we have an encoding thread + overlay threads
+        if (m_HDLArray.size() <= nOverlayThreads + 1)
+        {
+            for (size_t i = 0; i < m_pSessionArray.size(); i++)
+            {
+                m_pSessionArray[i]->pPipeline->StopOverlay();
+            }
+            for (MSDKThreadsIterator it = m_HDLArray.begin(); it != m_HDLArray.end(); it++)
+            {
+                (*it)->Wait();
+                MSDK_SAFE_DELETE(*it);
+            }
+            m_HDLArray.clear();
+        }
     }
 
     msdk_printf(MSDK_STRING("\nTranscoding finished\n"));
@@ -415,7 +482,7 @@ mfxStatus Launcher::ProcessResult()
         msdk_printf(MSDK_STRING("%s"),ss.str().c_str());
         if (pPerfFile)
         {
-            msdk_fprintf(pPerfFile, ss.str().c_str());
+            msdk_fprintf(pPerfFile, MSDK_STRING("%s"), ss.str().c_str());
         }
 
     }
@@ -427,7 +494,7 @@ mfxStatus Launcher::ProcessResult()
     msdk_printf(MSDK_STRING("%s"),ssTest.str().c_str());
     if (pPerfFile)
     {
-        msdk_fprintf(pPerfFile, ssTest.str().c_str());
+        msdk_fprintf(pPerfFile, MSDK_STRING("%s"), ssTest.str().c_str());
     }
     return FinalSts;
 } // mfxStatus Launcher::ProcessResult()
@@ -452,7 +519,9 @@ mfxStatus Launcher::VerifyCrossSessionsOptions()
 
         if (m_InputParamsArray[i].bOpenCL ||
             m_InputParamsArray[i].EncoderFourCC ||
-            m_InputParamsArray[i].DecoderFourCC)
+            m_InputParamsArray[i].DecoderFourCC ||
+            m_InputParamsArray[i].nVppCompSrcH ||
+            m_InputParamsArray[i].nVppCompSrcW)
         {
             bUseExternalAllocator = true;
         }
@@ -465,13 +534,18 @@ mfxStatus Launcher::VerifyCrossSessionsOptions()
                 if (m_InputParamsArray[j].MaxFrameNumber != MFX_INFINITE)
                 {
                     msdk_printf(MSDK_STRING("\"-timeout\" option isn't compatible with \"-n\". \"-n\" will be ignored.\n"));
-                    for (mfxU32 j = 0; j < m_InputParamsArray.size(); j++)
-                        m_InputParamsArray[j].MaxFrameNumber = MFX_INFINITE;
+                    for (mfxU32 k = 0; k < m_InputParamsArray.size(); k++)
+                    {
+                        m_InputParamsArray[k].MaxFrameNumber = MFX_INFINITE;
+                    }
+                    break;
                 }
             }
             msdk_printf(MSDK_STRING("Timeout %d seconds has been set to all sessions\n"), m_InputParamsArray[i].nTimeout);
             for (mfxU32 j = 0; j < m_InputParamsArray.size(); j++)
+            {
                 m_InputParamsArray[j].nTimeout = m_InputParamsArray[i].nTimeout;
+            }
         }
 
         if (Source == m_InputParamsArray[i].eMode)
@@ -652,12 +726,6 @@ void Launcher::Close()
         delete m_pExtBSProcArray[m_pExtBSProcArray.size() - 1];
         m_pExtBSProcArray[m_pExtBSProcArray.size() - 1] = NULL;
         m_pExtBSProcArray.pop_back();
-    }
-
-    while (m_HDLArray.size())
-    {
-        delete m_HDLArray[m_HDLArray.size()-1];
-        m_HDLArray.pop_back();
     }
 } // void Launcher::Close()
 

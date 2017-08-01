@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -313,6 +313,101 @@ mfxStatus CARGB16VideoReader::LoadNextFrameSequential(mfxFrameData* pData, mfxFr
     fclose(m_fSrc);
 
     return MFX_ERR_NONE;
+}
+
+mfxStatus CBufferedVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 bayerType)
+{
+    bayerType; pInfo;
+
+    pData->Y16 = buffer[nCurrentFrame];
+    pData->FrameOrder = nCurrentFrame;
+    nCurrentFrame++;
+    return MFX_ERR_NONE;
+}
+
+mfxStatus CBufferedVideoReader::Init(sInputParams *pParams) {
+    //Valid only for Bayer sequence input
+    msdk_strcopy(m_FileNameBase, pParams->strSrcFile);
+    m_FileNum = 0;
+    nFramesToProceed = pParams->nFramesToProceed;
+    m_DoPadding = pParams->bDoPadding;
+    printf("Buffering ");
+    while (m_FileNum < pParams->nFramesToProceed) {
+        int filenameIndx = m_FileNum;
+        msdk_char fname[MSDK_MAX_FILENAME_LEN];
+        const msdk_char *pExt;
+        switch (pParams->inputType) {
+        case MFX_CAM_BAYER_GRBG:
+            pExt = MSDK_STRING("gr16");
+            break;
+        case MFX_CAM_BAYER_GBRG:
+            pExt = MSDK_STRING("gb16");
+            break;
+        case MFX_CAM_BAYER_BGGR:
+            pExt = MSDK_STRING("bg16");
+            break;
+        case MFX_CAM_BAYER_RGGB:
+        default:
+            pExt = MSDK_STRING("rg16");
+            break;
+        }
+
+#if defined(_WIN32) || defined(_WIN64)
+        msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%08d.%s"), m_FileNameBase, filenameIndx, pExt);
+#else
+        msdk_sprintf(fname, MSDK_STRING("%s%08d.%s"), m_FileNameBase, filenameIndx, pExt);
+#endif
+        MSDK_FOPEN(m_fSrc, fname, MSDK_STRING("rb"));
+
+        MSDK_CHECK_POINTER(m_fSrc, MFX_ERR_MORE_DATA);
+
+        mfxI32 w, h, i, pitch;
+        mfxI32 nBytesRead;
+
+        w = m_Width = pParams->frameInfo->nWidth;
+        h = m_Height = pParams->frameInfo->nHeight;
+
+        //buffer for FOURCC_R16 is w*h*2
+        mfxU16* data = new mfxU16[w * h * 2];
+        mfxU16 *ptr = data;
+
+        pitch = w;
+
+        if (!m_DoPadding)
+        {
+            for (i = 0; i < h; i++)
+            {
+                nBytesRead = (mfxI32)fread(ptr + i * pitch, sizeof(mfxU16), w, m_fSrc);
+
+                IOSTREAM_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+            }
+        }
+        buffer.push_back(data);
+        printf(".");
+        m_FileNum++;
+
+        fclose(m_fSrc);
+    }
+    printf("\n");
+    return MFX_ERR_NONE;
+}
+
+CBufferedVideoReader::~CBufferedVideoReader() {
+    Close();
+}
+
+void CBufferedVideoReader::Close() {
+    if (m_fSrc != 0)
+    {
+        fclose(m_fSrc);
+        m_fSrc = 0;
+    }
+    while (buffer.size() > 0) {
+        if (buffer[0]) {
+            delete buffer[0];
+            buffer.erase(buffer.begin());
+        }
+    }
 }
 
 CRawVideoReader::CRawVideoReader()
@@ -734,8 +829,62 @@ mfxStatus CRawVideoWriter::Init(sInputParams* pParams)
     return MFX_ERR_NONE;
 }
 
+mfxStatus CRawVideoWriter::WriteFrameNV12(mfxFrameData* pData, const msdk_char *fileId, mfxFrameInfo* pInfo) {
+    msdk_char fname[MSDK_MAX_FILENAME_LEN];
+    FILE *f;
+    mfxU32 i = 0, j = 0;
+    mfxU32 h = 0, cx = 0, cy = 0, cw = 0, ch = 0;
+    mfxU8* buf = pData->Y;
+    mfxU32 p = pData->Pitch;
 
-mfxStatus CRawVideoWriter::WriteFrame(mfxFrameData* pData, const msdk_char *fileId, mfxFrameInfo* pInfo)
+    MSDK_CHECK_POINTER(pData, MFX_ERR_NOT_INITIALIZED);
+    MSDK_CHECK_POINTER(pInfo, MFX_ERR_NOT_INITIALIZED);
+
+    #if defined(_WIN32) || defined(_WIN64)
+        if (fileId)
+            msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%s.nv12"), m_FileNameBase, fileId);
+        else
+            msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%d.nv12"), m_FileNameBase, m_FileNum);
+    #else
+        if (fileId)
+            msdk_sprintf(fname, MSDK_STRING("%s%s.argb16"), m_FileNameBase, fileId);
+        else
+            msdk_sprintf(fname, MSDK_STRING("%s%d.argb16"), m_FileNameBase, m_FileNum);
+    #endif
+
+    m_FileNum++;
+
+    MSDK_FOPEN(f, fname, MSDK_STRING("wb"));
+    MSDK_CHECK_POINTER(f, MFX_ERR_NULL_PTR);
+
+    h = pInfo->Height;
+    cx = pInfo->CropX;
+    cy = pInfo->CropY;
+    cw = pInfo->CropW;
+    ch = pInfo->CropH;
+
+    for (i = 0; i < ch; ++i)
+    {
+        fwrite(buf + cx + (cy + i)*p, 1, cw, f);
+        fflush(f);
+    }
+    buf += p*h + cx + cy*p / 2;
+    for (i = 0; i < ch / 2; ++i)
+        for (j = 1; j <= cw / 2; ++j)
+        {
+            fwrite(buf + p*i + 2 * j - 2, 1, 1, f);
+            fwrite(buf + p*i + 2 * j - 1, 1, 1, f);
+        }
+
+    fclose(f);
+
+    return MFX_ERR_NONE;
+
+}
+
+
+
+mfxStatus CRawVideoWriter::WriteFrameARGB16(mfxFrameData* pData, const msdk_char *fileId, mfxFrameInfo* pInfo)
 {
     mfxU32 i, h, w, pitch;
     mfxU16* ptr;
@@ -750,15 +899,31 @@ mfxStatus CRawVideoWriter::WriteFrame(mfxFrameData* pData, const msdk_char *file
     MSDK_CHECK_POINTER(pInfo, MFX_ERR_NOT_INITIALIZED);
 
 #if defined(_WIN32) || defined(_WIN64)
-    if (fileId)
-        msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%s.argb16"), m_FileNameBase, fileId);
-    else
-        msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%d.argb16"), m_FileNameBase, m_FileNum);
+    if (fileId) {
+        if (pInfo->FourCC == MFX_FOURCC_ARGB16)
+            msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%s.argb16"), m_FileNameBase, fileId);
+        else if (pInfo->FourCC == MFX_FOURCC_ABGR16)
+            msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%s.abgr16"), m_FileNameBase, fileId);
+    }
+    else {
+        if (pInfo->FourCC == MFX_FOURCC_ARGB16)
+            msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%d.argb16"), m_FileNameBase, m_FileNum);
+        else if (pInfo->FourCC == MFX_FOURCC_ABGR16)
+            msdk_sprintf(fname, MSDK_MAX_FILENAME_LEN, MSDK_STRING("%s%d.abgr16"), m_FileNameBase, m_FileNum);
+    }
 #else
-    if (fileId)
-        msdk_sprintf(fname, MSDK_STRING("%s%s.argb16"), m_FileNameBase, fileId);
-    else
-        msdk_sprintf(fname, MSDK_STRING("%s%d.argb16"), m_FileNameBase, m_FileNum);
+    if (fileId) {
+        if (pInfo->FourCC == MFX_FOURCC_ARGB16)
+            msdk_sprintf(fname, MSDK_STRING("%s%s.argb16"), m_FileNameBase, fileId);
+        else if (pInfo->FourCC == MFX_FOURCC_ABGR16)
+            msdk_sprintf(fname, MSDK_STRING("%s%s.abgr16"), m_FileNameBase, fileId);
+    }
+    else {
+        if (pInfo->FourCC == MFX_FOURCC_ARGB16)
+            msdk_sprintf(fname, MSDK_STRING("%s%d.argb16"), m_FileNameBase, m_FileNum);
+        else if (pInfo->FourCC == MFX_FOURCC_ABGR16)
+            msdk_sprintf(fname, MSDK_STRING("%s%d.abgr16"), m_FileNameBase, m_FileNum);
+    }
 #endif
 
     m_FileNum++;

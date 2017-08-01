@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -18,10 +18,11 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 \**********************************************************************************/
 #include "pipeline_camera.h"
 #include <sstream>
+#include "version.h"
 
 void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
 {
-    msdk_printf(MSDK_STRING("Intel(R) Camera Expert SDK Sample Version %s\n\n"), MSDK_SAMPLE_VERSION);
+    msdk_printf(MSDK_STRING("Intel(R) Camera Expert SDK Sample Version %s\n\n"), GetMSDKSampleVersion().c_str());
 
     if (strErrorMessage)
     {
@@ -34,7 +35,8 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-a asyncDepth] / [-asyncDepth asyncDepth]          - set async depth, default %d \n"), CAM_SAMPLE_ASYNC_DEPTH);
     msdk_printf(MSDK_STRING("   [-b bitDepth] / [-bitDepth bitDepth]                - set bit depth, default 10 \n"));
     msdk_printf(MSDK_STRING("   [-f format] / [-format format]                      - input Bayer format: rggb, bggr, grbg or gbrg\n"));
-    msdk_printf(MSDK_STRING("   [-of format] / [-outFormat format]                  - output format: of argb16 or 16 meaning 16 bit ARGB, 8 bit ARGB otherwise\n"));
+    msdk_printf(MSDK_STRING("   [-of format] / [-outFormat format]                  - output format: of argb16 or 16 meaning 16 bit ARGB, 8 bit ARGB, NV12\n"));
+    msdk_printf(MSDK_STRING("   [-offset pre1 pre2 pre3 post1 post2 post3]          - In case of NV12 output, offset set color pre and post offsets\n"));
     msdk_printf(MSDK_STRING("   [-3DLUT_gamma]                                      - use 3D LUT gamma correction\n"));
     msdk_printf(MSDK_STRING("   [-ng] / [-noGamma]                                  - no gamma correction\n"));
     msdk_printf(MSDK_STRING("   [-gamma_points]                                     - set specific gamma points (64 points expected)\n"));
@@ -43,6 +45,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-bdn threshold] / [-bayerDenoise threshold]        - bayer denoise on\n"));
     msdk_printf(MSDK_STRING("   [-hot_pixel Diff Num]                               - bayer hot pixel removal\n"));
     msdk_printf(MSDK_STRING("   [-bbl B G0 G1 R] / [-bayerBlackLevel B G0 G1 R]     - bayer black level correction\n"));
+    msdk_printf(MSDK_STRING("   [-tcc R G B C M Y] / [-totalColorControl R G B C M Y]  - total color control \n"));
     msdk_printf(MSDK_STRING("   [-bwb B G0 G1 R] / [-bayerWhiteBalance B G0 G1 R]   - bayer white balance\n"));
     msdk_printf(MSDK_STRING("   [-ccm n00 n01 ... n33 ]                             - color correction 3x3 matrix\n"));
     msdk_printf(MSDK_STRING("   [-vignette maskfile ]                               - enable vignette correction using mask from specified file\n"));
@@ -53,6 +56,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-n numFrames] / [-numFramesToProcess numFrames]    - number of frames to process\n"));
     msdk_printf(MSDK_STRING("   [-alpha alpha]                                      - write value to alpha channel of output surface \n"));
     msdk_printf(MSDK_STRING("   [-pd] / [-padding]                                  - do input surface padding \n"));
+    msdk_printf(MSDK_STRING("   [-perf_opt]                                         - buffered reading of input (support: Bayer sequence \n"));
     msdk_printf(MSDK_STRING("   [-resetInterval resetInterval]                      - reset interval in frames, default 7 \n"));
     msdk_printf(MSDK_STRING("   [-reset -i ... -o ... -f ... -w ... -h ... -bbl ... -bwb ... -ccm ...]     -  params to be used after next reset.\n"));
     msdk_printf(MSDK_STRING("       Only params listed above are supported, if a param is not set here, the originally set value is used. \n"));
@@ -141,6 +145,10 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             }
             i++;
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-perf_opt")))
+        {
+            pParams->bPerf_opt = true;
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-imem")))
         {
             if(i + 1 >= nArgNum)
@@ -201,6 +209,24 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         {
             pParams->bGamma = false;
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-offset")))
+        {
+
+            if (i + 6>= nArgNum)
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for offset key"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            pParams->offset = true;
+
+            msdk_opt_read(strInput[++i], pParams->pre[0]);
+            msdk_opt_read(strInput[++i], pParams->pre[1]);
+            msdk_opt_read(strInput[++i], pParams->pre[2]);
+            msdk_opt_read(strInput[++i], pParams->post[0]);
+            msdk_opt_read(strInput[++i], pParams->post[1]);
+            msdk_opt_read(strInput[++i], pParams->post[2]);
+
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-3DLUT_gamma")))
         {
             pParams->b3DLUTGamma = false;
@@ -227,6 +253,20 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             msdk_opt_read(strInput[++i], pParams->black_level_G0);
             msdk_opt_read(strInput[++i], pParams->black_level_G1);
             msdk_opt_read(strInput[++i], pParams->black_level_R);
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-tcc")) || 0 == msdk_strcmp(strInput[i], MSDK_STRING("-totalColorControl"))) {
+            if (i + 6 >= nArgNum)
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for -tcc key"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            pParams->bTCC = true;
+            msdk_opt_read(strInput[++i], pParams->tcc_red);
+            msdk_opt_read(strInput[++i], pParams->tcc_green);
+            msdk_opt_read(strInput[++i], pParams->tcc_blue);
+            msdk_opt_read(strInput[++i], pParams->tcc_cyan);
+            msdk_opt_read(strInput[++i], pParams->tcc_magenta);
+            msdk_opt_read(strInput[++i], pParams->tcc_yellow);
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-hot_pixel")))
         {
@@ -383,7 +423,13 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_ARGB16;
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("abgr16")))
                 pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_ABGR16;
-            else
+#if _MSDK_API >= MSDK_API(1, 23)
+            else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("nv12"))) {
+                pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_NV12;
+                pParams->bRGBToYUV = true;
+            }
+#endif
+            else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("rgb4")))
                 pParams->frameInfo[VPP_OUT].FourCC = MFX_FOURCC_RGB4;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-w")) || 0 == msdk_strcmp(strInput[i], MSDK_STRING("-width")))
@@ -461,6 +507,19 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                     msdk_opt_read(strInput[++i], resPar.black_level_G0);
                     msdk_opt_read(strInput[++i], resPar.black_level_G1);
                     msdk_opt_read(strInput[++i], resPar.black_level_R);
+                } else if(0 == msdk_strcmp(strInput[i], MSDK_STRING("-tcc")) || 0 == msdk_strcmp(strInput[i], MSDK_STRING("-totalColorControl"))) {
+                    if (i + 6 >= nArgNum)
+                    {
+                        PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for -tcc key"));
+                        return MFX_ERR_UNSUPPORTED;
+                    }
+                    pParams->bTCC = true;
+                    msdk_opt_read(strInput[++i], pParams->tcc_red);
+                    msdk_opt_read(strInput[++i], pParams->tcc_green);
+                    msdk_opt_read(strInput[++i], pParams->tcc_blue);
+                    msdk_opt_read(strInput[++i], pParams->tcc_cyan);
+                    msdk_opt_read(strInput[++i], pParams->tcc_magenta);
+                    msdk_opt_read(strInput[++i], pParams->tcc_yellow);
                 }
                 else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-hot_pixel")))
                 {
@@ -687,6 +746,12 @@ int main(int argc, char *argv[])
             pParams->white_balance_G0= Params.resetParams[resetNum].white_balance_G0;
             pParams->white_balance_G1= Params.resetParams[resetNum].white_balance_G1;
             pParams->white_balance_R = Params.resetParams[resetNum].white_balance_R;
+            pParams->tcc_red = Params.resetParams[resetNum].tcc_red;
+            pParams->tcc_blue = Params.resetParams[resetNum].tcc_blue;
+            pParams->tcc_green = Params.resetParams[resetNum].tcc_green;
+            pParams->tcc_cyan = Params.resetParams[resetNum].tcc_cyan;
+            pParams->tcc_magenta = Params.resetParams[resetNum].tcc_magenta;
+            pParams->tcc_yellow = Params.resetParams[resetNum].tcc_yellow;
             pParams->bCCM = Params.resetParams[resetNum].bCCM;
             for (int k = 0; k < 3; k++)
                 for (int z = 0; z < 3; z++)
@@ -715,7 +780,6 @@ int main(int argc, char *argv[])
     double time = ((double)timeEnd.QuadPart - (double)timeBegin.QuadPart)/ (double)m_Freq.QuadPart;
 
     int frames = Pipeline.GetNumberProcessedFrames();
-
     _tprintf(_T("Total frames %d \n"), frames);
     _tprintf(_T("Total time   %.2lf sec\n"), time);
     _tprintf(_T("Total FPS    %.2lf fps\n"), frames/time);

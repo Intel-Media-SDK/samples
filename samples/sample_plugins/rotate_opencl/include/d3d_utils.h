@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -112,7 +112,7 @@ inline void DumpRect(IDirect3DSurface9 *pSurf, const std::string &file)
     D3DSURFACE_DESC desc;
     pSurf->GetDesc(&desc);
 
-    RECT rect = {0, 0, desc.Width, desc.Height};
+    RECT rect = {0, 0, (LONG)desc.Width, (LONG)desc.Height};
     D3DLOCKED_RECT locked_rect;
     pSurf->LockRect(&locked_rect, &rect, D3DLOCK_READONLY);
     out.write(reinterpret_cast<const char *>(locked_rect.pBits), locked_rect.Pitch * desc.Height);

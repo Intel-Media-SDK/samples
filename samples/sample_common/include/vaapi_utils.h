@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -38,11 +38,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <xcb/present.h>
 #endif // X11_DRI3_SUPPORT
 #endif
-#if defined (ENABLE_MONDELLO_SUPPORT)
-#include "libcamhal/api/ICamera.h"
-using namespace icamera;
-#endif
-
 #include "sample_defs.h"
 #include "sample_utils.h"
 #include "vm/thread_defs.h"
@@ -200,6 +195,7 @@ namespace MfxLoader
         typedef void (*drm_intel_bo_unreference_type)(drm_intel_bo *bo);
         typedef drm_intel_bufmgr* (*drm_intel_bufmgr_gem_init_type)(int fd, int batch_size);
         typedef int (*drm_intel_bo_gem_export_to_prime_type) (drm_intel_bo *, int *);
+        typedef void (*drm_intel_bufmgr_destroy_type)(drm_intel_bufmgr*);
 
         DrmIntel_Proxy();
         ~DrmIntel_Proxy();
@@ -208,6 +204,7 @@ namespace MfxLoader
         __DECLARE(drm_intel_bo_gem_create_from_prime);
         __DECLARE(drm_intel_bo_unreference);
         __DECLARE(drm_intel_bufmgr_gem_init);
+        __DECLARE(drm_intel_bufmgr_destroy);
 #if defined(X11_DRI3_SUPPORT)
         __DECLARE(drm_intel_bo_gem_export_to_prime);
 #endif
@@ -401,59 +398,6 @@ namespace MfxLoader
 #endif // X11_DRI3_SUPPORT
 #endif
 
-#if defined (ENABLE_MONDELLO_SUPPORT)
-    class LibCamhalProxy
-    {
-        private:
-        SimpleLoader lib; // should appear first in member list
-
-        public:
-        /* int camera_hal_init(void) */
-        typedef int (*_ZN7icamera15camera_hal_initEv_type)(void);
-        /* int camera_hal_deinit(void) */
-        typedef int (*_ZN7icamera17camera_hal_deinitEv_type)(void);
-        /* int camera_device_open(int camera_id, int vc_num = 0) */
-        typedef int (*_ZN7icamera18camera_device_openEii_type)(int, int);
-        /* void camera_device_close(int camera_id) */
-        typedef int (*_ZN7icamera19camera_device_closeEi_type)(int);
-        /* int camera_device_stop(int camera_id); */
-        typedef int (*_ZN7icamera18camera_device_stopEi_type)(int);
-        /* int camera_device_start(int camera_id) */
-        typedef int (*_ZN7icamera19camera_device_startEi_type)(int);
-        /* int get_number_of_cameras(void) */
-        typedef int (*_ZN7icamera21get_number_of_camerasEv_type)(void);
-        /* int get_camera_info(int camera_idx, camera_info_t& info) */
-        typedef int (*_ZN7icamera15get_camera_infoEiRNS_13camera_info_tE_type)
-            (int, camera_info_t&);
-        /* camera_device_config_streams(int camera_id, stream_config_t *stream_list) */
-        typedef int (*_ZN7icamera28camera_device_config_streamsEiPNS_15stream_config_tE_type)
-            (int, stream_config_t *);
-        /* int camera_stream_qbuf(int camera_id, int stream_id, camera_buffer_t *buffer)
-             int num_buffers = 1, const Parameters* settings = NULL); */
-        typedef int (*_ZN7icamera18camera_stream_qbufEiiPNS_15camera_buffer_tEiPKNS_10ParametersE_type)
-             (int, int, camera_buffer_t*, int, const Parameters*);
-        /* int camera_stream_dqbuf(int camera_id, int stream_id, camera_buffer_t **buffer, Parameters* settings = NULL) */
-        typedef int (*_ZN7icamera19camera_stream_dqbufEiiPPNS_15camera_buffer_tEPNS_10ParametersE_type)
-             (int, int, camera_buffer_t **, Parameters*);
-
-    LibCamhalProxy();
-    ~LibCamhalProxy();
-
-#define __DECLARE(name) const name ## _type name
-    __DECLARE(_ZN7icamera15camera_hal_initEv);
-    __DECLARE(_ZN7icamera17camera_hal_deinitEv);
-    __DECLARE(_ZN7icamera18camera_device_openEii);
-    __DECLARE(_ZN7icamera19camera_device_closeEi);
-    __DECLARE(_ZN7icamera19camera_device_startEi);
-    __DECLARE(_ZN7icamera18camera_device_stopEi);
-    __DECLARE(_ZN7icamera21get_number_of_camerasEv);
-    __DECLARE(_ZN7icamera15get_camera_infoEiRNS_13camera_info_tE);
-    __DECLARE(_ZN7icamera28camera_device_config_streamsEiPNS_15stream_config_tE);
-    __DECLARE(_ZN7icamera18camera_stream_qbufEiiPNS_15camera_buffer_tEiPKNS_10ParametersE);
-    __DECLARE(_ZN7icamera19camera_stream_dqbufEiiPPNS_15camera_buffer_tEPNS_10ParametersE);
-#undef __DECLARE
-    };
-#endif // ENABLE_MONDELLO_SUPPORT
 } // namespace MfxLoader
 
 

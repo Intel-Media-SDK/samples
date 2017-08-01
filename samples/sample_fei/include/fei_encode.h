@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -23,38 +23,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "encoding_task.h"
 #include "predictors_repacking.h"
 
-struct SyncList
-{
-    std::list<std::pair<bufSet*, mfxFrameSurface1*> > sync_list;
-
-    ~SyncList(){ Clear(); }
-
-    void Add(const std::pair<bufSet*, mfxFrameSurface1*> & instance) { sync_list.push_back(instance); }
-
-    void Clear()
-    {
-        for (std::list<std::pair<bufSet*, mfxFrameSurface1*> >::iterator it = sync_list.begin(); it != sync_list.end(); ++it)
-        {
-            if ((*it).first){ (*it).first->vacant = true; }
-        }
-    }
-
-    void Update()
-    {
-        for (std::list<std::pair<bufSet*, mfxFrameSurface1*> >::iterator it = sync_list.begin(); it != sync_list.end();)
-        {
-            if (!(*it).second || (*it).second->Data.Locked == 0)
-            {
-                if ((*it).first){ (*it).first->vacant = true; }
-                it = sync_list.erase(it);
-            }
-            else{
-                ++it;
-            }
-        }
-    }
-};
-
 class FEI_EncodeInterface
 {
 private:
@@ -76,17 +44,17 @@ public:
     /* Bitstream writer */
     CSmplBitstreamWriter m_FileWriter;
 
-    /* For I/O operations with extended buffers */
+    /* For I/O operations with extension buffers */
     FILE* m_pMvPred_in;
     FILE* m_pENC_MBCtrl_in;
     FILE* m_pMbQP_in;
     FILE* m_pRepackCtrl_in;
+    FILE* m_pWeights_in;
     FILE* m_pMBstat_out;
     FILE* m_pMV_out;
     FILE* m_pMBcode_out;
 
     std::vector<mfxExtBuffer*> m_InitExtParams;
-    SyncList sync_list;
 
     /* Temporary memory to speed up computations */
     std::vector<mfxI16> m_tmpForMedian;
@@ -144,13 +112,14 @@ public:
                     mfxU16 & numRefActiveP,
                     mfxU16 & numRefActiveBL0,
                     mfxU16 & numRefActiveBL1,
-                    mfxU16 & bRefType);
+                    mfxU16 & bRefType,
+                    bool   & bSigleFieldProcessing);
 
     mfxStatus FillParameters();
-    mfxStatus InitFrameParams(mfxFrameSurface1* encodeSurface, PairU8 frameType, iTask* eTask);
+    mfxStatus InitFrameParams(iTask* eTask);
     mfxStatus AllocateSufficientBuffer();
-    mfxStatus EncodeOneFrame(iTask* eTask, mfxFrameSurface1* pSurf, PairU8 runtime_frameType);
-    mfxStatus FlushOutput();
+    mfxStatus EncodeOneFrame(iTask* eTask);
+    mfxStatus FlushOutput(iTask* eTask);
     mfxStatus ResetState();
 };
 #endif // __SAMPLE_FEI_ENCODE_INTERFACE_H__

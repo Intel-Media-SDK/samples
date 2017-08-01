@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -34,6 +34,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <cstring>
 #include <list>
 #include <vector>
+#include <map>
 #include <ctime>
 #include "math.h"
 
@@ -63,6 +64,7 @@ const mfxU16 MaxFeiEncMVPNum = 4;
 #define MaxNumActiveRefBL0    4
 #define MaxNumActiveRefBL1    1
 #define MaxNumActiveRefBL1_i  2
+#define MaxNumActiveRefPAK    16 // PAK supports up to 16 L0 / L1 references
 
 enum
 {
@@ -87,16 +89,31 @@ inline mfxU16 FrameTypeToSliceType(mfxU8 frameType)
     }
 }
 
-/*
-enum
+#if MFX_VERSION >= 1023
+inline mfxU16 PicStructToFrameType(mfxU16 picstruct)
 {
-    RPLM_ST_PICNUM_SUB = 0,
-    RPLM_ST_PICNUM_ADD = 1,
-    RPLM_LT_PICNUM     = 2,
-    RPLM_END           = 3,
-    RPLM_INTERVIEW_SUB = 4,
-    RPLM_INTERVIEW_ADD = 5,
-};*/
+    switch (picstruct & 0x0f)
+    {
+    case MFX_PICSTRUCT_PROGRESSIVE:
+        return MFX_PICTYPE_FRAME;
+        break;
+
+    case MFX_PICSTRUCT_FIELD_TFF:
+    case MFX_PICSTRUCT_FIELD_BFF:
+        return MFX_PICTYPE_TOPFIELD | MFX_PICTYPE_BOTTOMFIELD;
+        break;
+
+    default:
+        return MFX_PICTYPE_UNKNOWN;
+        break;
+    }
+}
+
+inline mfxU16 PicStructToFrameTypeFieldBased(mfxU16 picstruct, mfxU16 is_interlaced, mfxU16 parity)
+{
+    return mfxU16((!!(picstruct & MFX_PICSTRUCT_PROGRESSIVE) == is_interlaced) ? MFX_PICTYPE_UNKNOWN : (is_interlaced ? (parity ? MFX_PICTYPE_BOTTOMFIELD : MFX_PICTYPE_TOPFIELD) : MFX_PICTYPE_FRAME));
+}
+#endif // MFX_VERSION >= 1023
 
 enum
 {
@@ -157,6 +174,31 @@ public:
         MSDK_SAFE_DELETE_ARRAY(SurfacesPool);
         PoolSize   = 0;
         LastPicked = 0xffff;
+    }
+
+    mfxStatus UpdatePicStructs(mfxU16 picstruct)
+    {
+        if (PoolSize == 0) { return MFX_ERR_NONE; }
+
+        MSDK_CHECK_POINTER(SurfacesPool, MFX_ERR_NULL_PTR);
+
+        switch (picstruct & 0xf)
+        {
+        case MFX_PICSTRUCT_PROGRESSIVE:
+        case MFX_PICSTRUCT_FIELD_TFF:
+        case MFX_PICSTRUCT_FIELD_BFF:
+            break;
+
+        default:
+            return MFX_ERR_INVALID_VIDEO_PARAM;
+        }
+
+        for (mfxU16 i = 0; i < PoolSize; ++i)
+        {
+            SurfacesPool[i].Info.PicStruct = picstruct;
+        }
+
+        return MFX_ERR_NONE;
     }
 
     mfxFrameSurface1* GetFreeSurface_FEI()
@@ -235,7 +277,7 @@ struct AppConfig
     AppConfig()
         : DecodeId(0)            // Default (invalid) value
         , CodecId(MFX_CODEC_AVC) // Only AVC is supported
-        , ColorFormat(MFX_FOURCC_YV12)
+        , ColorFormat(MFX_FOURCC_I420)
         , nPicStruct(MFX_PICSTRUCT_PROGRESSIVE)
         , nWidth(0)
         , nHeight(0)
@@ -265,6 +307,9 @@ struct AppConfig
         , SubPelMode(0x03)            // quarter-pixel
         , IntraSAD(0x02)              // Haar transform
         , InterSAD(0x02)              // Haar transform
+        , NumMVPredictors_Pl0(1)
+        , NumMVPredictors_Bl0(1)
+        , NumMVPredictors_Bl1(0)
         , GopOptFlag(0)               // None
         , CodecProfile(MFX_PROFILE_AVC_HIGH)
         , CodecLevel(MFX_LEVEL_AVC_41)
@@ -303,7 +348,8 @@ struct AppConfig
         , ConstrainedIntraPredFlag(false)
         , Transform8x8ModeFlag(false)
         , bRepackPreencMV(false)
-        , bNPredSpecified_l0(false)
+        , bNPredSpecified_Pl0(false)
+        , bNPredSpecified_Bl0(false)
         , bNPredSpecified_l1(false)
         , bPreencPredSpecified_l0(false)
         , bPreencPredSpecified_l1(false)
@@ -318,9 +364,8 @@ struct AppConfig
         , mbQpFile(NULL)
         , repackctrlFile(NULL)
         , decodestreamoutFile(NULL)
+        , weightsFile(NULL)
     {
-        NumMVPredictors[0] = 1;
-        NumMVPredictors[1] = 0;
         PreencMVPredictors[0] = true;
         PreencMVPredictors[1] = true;
 
@@ -349,7 +394,7 @@ struct AppConfig
     mfxU8  preencDSstrength; // downsample input before passing to preenc (2/4/8x are supported)
     bool   bDynamicRC;
 
-    mfxU16 SearchWindow; // search window size and search path from predifined presets
+    mfxU16 SearchWindow; // search window size and search path from predefined presets
     mfxU16 LenSP;        // search path length
     mfxU16 SearchPath;   // search path type
     mfxU16 RefWidth;     // search window width
@@ -359,7 +404,9 @@ struct AppConfig
     mfxU16 SubPelMode;
     mfxU16 IntraSAD;
     mfxU16 InterSAD;
-    mfxU16 NumMVPredictors[2];    // number of [0] - L0 predictors, [1] - L1 predictors
+    mfxU16 NumMVPredictors_Pl0;
+    mfxU16 NumMVPredictors_Bl0;
+    mfxU16 NumMVPredictors_Bl1;
     bool   PreencMVPredictors[2]; // use PREENC predictor [0] - L0, [1] - L1
     mfxU16 GopOptFlag;            // STRICT | CLOSED, default is OPEN GOP
     mfxU16 CodecProfile;
@@ -410,7 +457,8 @@ struct AppConfig
     bool ConstrainedIntraPredFlag;
     bool Transform8x8ModeFlag;
     bool bRepackPreencMV;
-    bool bNPredSpecified_l0;
+    bool bNPredSpecified_Pl0;
+    bool bNPredSpecified_Bl0;
     bool bNPredSpecified_l1;
     bool bPreencPredSpecified_l0;
     bool bPreencPredSpecified_l1;
@@ -425,6 +473,7 @@ struct AppConfig
     msdk_char* mbQpFile;
     msdk_char* repackctrlFile;
     msdk_char* decodestreamoutFile;
+    msdk_char* weightsFile;
 
     struct{
         mfxVideoParam* pEncodeVideoParam;
@@ -445,7 +494,9 @@ struct AppConfig
         mfxU32 numMB_preenc_frame;  // This field could be different to numMB_frame if PreENC uses downsampling
         mfxU32 numMB_preenc_refPic; // This field could be different to numMB_refPic if PreENC uses downsampling
 
-        mfxU16 numOfPredictors[2][2]; // Number of predictors; idexes means [fieldId][L0L1]
+        mfxU16 NumMVPredictorsP;
+        mfxU16 NumMVPredictorsBL0;
+        mfxU16 NumMVPredictorsBL1;
     } PipelineCfg;
 };
 

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -21,15 +21,15 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "vm/atomic_defs.h"
 
-#define _interlockedbittestandset      fake_set
-#define _interlockedbittestandreset    fake_reset
-#define _interlockedbittestandset64    fake_set64
-#define _interlockedbittestandreset64  fake_reset64
+//#define _interlockedbittestandset      fake_set
+//#define _interlockedbittestandreset    fake_reset
+//#define _interlockedbittestandset64    fake_set64
+//#define _interlockedbittestandreset64  fake_reset64
 #include <intrin.h>
-#undef _interlockedbittestandset
-#undef _interlockedbittestandreset
-#undef _interlockedbittestandset64
-#undef _interlockedbittestandreset64
+//#undef _interlockedbittestandset
+//#undef _interlockedbittestandreset
+//#undef _interlockedbittestandset64
+//#undef _interlockedbittestandreset64
 #pragma intrinsic (_InterlockedIncrement16)
 #pragma intrinsic (_InterlockedDecrement16)
 

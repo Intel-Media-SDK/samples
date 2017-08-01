@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -61,6 +61,13 @@ enum eWorkMode {
   MODE_FILE_DUMP
 };
 
+#if _MSDK_API >= MSDK_API(1,22)
+enum eDecoderPostProc {
+  MODE_DECODER_POSTPROC_AUTO  = 0x1,
+  MODE_DECODER_POSTPROC_FORCE = 0x2
+};
+#endif //_MSDK_API >= MSDK_API(1,22)
+
 struct sInputParams
 {
     mfxU32 videoType;
@@ -77,6 +84,9 @@ struct sInputParams
     mfxU32  nWallH; //number of windows located in each column
     mfxU32  nWallMonitor; //monitor id, 0,1,.. etc
     bool    bWallNoTitle; //whether to show title for each window with fps value
+#if _MSDK_API >= MSDK_API(1,22)
+    mfxU16  nDecoderPostProcessing;
+#endif //_MSDK_API >= MSDK_API(1,22)
 
     mfxU32  numViews; // number of views for Multi-View Codec
     mfxU32  nRotation; // rotation for Motion JPEG Codec
@@ -223,6 +233,9 @@ protected: // variables
     std::auto_ptr<MFXVideoUSER>  m_pUserModule;
     std::auto_ptr<MFXPlugin> m_pPlugin;
     std::vector<mfxExtBuffer *> m_ExtBuffers;
+#if _MSDK_API >= MSDK_API(1,22)
+    mfxExtDecVideoProcessing m_DecoderPostProcessing;
+#endif //_MSDK_API >= MSDK_API(1,22)
 
     GeneralAllocator*       m_pGeneralAllocator;
     mfxAllocatorParams*     m_pmfxAllocatorParams;

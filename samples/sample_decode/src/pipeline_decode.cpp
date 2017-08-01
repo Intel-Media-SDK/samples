@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -47,6 +47,8 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #if defined(LIBVA_WAYLAND_SUPPORT)
 #include "class_wayland.h"
 #endif
+
+#include "version.h"
 
 #pragma warning(disable : 4100)
 
@@ -124,6 +126,12 @@ CDecodingPipeline::CDecodingPipeline()
     MSDK_ZERO_MEMORY(m_VppVideoSignalInfo);
     m_VppVideoSignalInfo.Header.BufferId = MFX_EXTBUFF_VPP_VIDEO_SIGNAL_INFO;
     m_VppVideoSignalInfo.Header.BufferSz = sizeof(m_VppVideoSignalInfo);
+
+#if _MSDK_API >= MSDK_API(1,22)
+    MSDK_ZERO_MEMORY(m_DecoderPostProcessing);
+    m_DecoderPostProcessing.Header.BufferId = MFX_EXTBUFF_DEC_VIDEO_PROCESSING;
+    m_DecoderPostProcessing.Header.BufferSz = sizeof(mfxExtDecVideoProcessing);
+#endif //_MSDK_API >= MSDK_API(1,22)
 
     m_hwdev = NULL;
 
@@ -271,7 +279,8 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
     }
 
     // Init session
-    if (pParams->bUseHWLib) {
+    if (pParams->bUseHWLib)
+    {
         // try searching on all display adapters
         initPar.Implementation = MFX_IMPL_HARDWARE_ANY;
 
@@ -281,14 +290,11 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
         if (D3D11_MEMORY == pParams->memType)
             initPar.Implementation |= MFX_IMPL_VIA_D3D11;
 
+        // Library should pick first available compatible adapter during InitEx call with MFX_IMPL_HARDWARE_ANY
         sts = m_mfxSession.InitEx(initPar);
-
-        // MSDK API version may not support multiple adapters - then try initialize on the default
-        if (MFX_ERR_NONE != sts) {
-            initPar.Implementation = (initPar.Implementation & !MFX_IMPL_HARDWARE_ANY) | MFX_IMPL_HARDWARE;
-            sts = m_mfxSession.InitEx(initPar);
-        }
-    } else {
+    }
+    else
+    {
         initPar.Implementation = MFX_IMPL_SOFTWARE;
         sts = m_mfxSession.InitEx(initPar);
     }
@@ -371,10 +377,12 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
         }
         else
         {
+            bool isDefaultPlugin = false;
             if (AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
             {
                 mfxIMPL impl = pParams->bUseHWLib ? MFX_IMPL_HARDWARE : MFX_IMPL_SOFTWARE;
                 pParams->pluginParams.pluginGuid = msdkGetPluginUID(impl, MSDK_VDECODE, pParams->videoType);
+                isDefaultPlugin = true;
             }
             if (!AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
             {
@@ -383,7 +391,9 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
             }
             if(sts==MFX_ERR_UNSUPPORTED)
             {
-                msdk_printf(MSDK_STRING("Default plugin cannot be loaded (possibly you have to define plugin explicitly)\n"));
+                msdk_printf(isDefaultPlugin ?
+                    MSDK_STRING("Default plugin cannot be loaded (possibly you have to define plugin explicitly)\n")
+                    : MSDK_STRING("Explicitly specified plugin cannot be loaded.\n"));
             }
         }
         MSDK_CHECK_STATUS(sts, "Plugin load failed");
@@ -464,21 +474,29 @@ mfxStatus CDecodingPipeline::Init(sInputParams *pParams)
 bool CDecodingPipeline::IsVppRequired(sInputParams *pParams)
 {
     bool bVppIsUsed = false;
-    // JPEG and Capture decoders can provide output in nv12 and rgb4 formats
-    if ((pParams->videoType == MFX_CODEC_JPEG) ||
-        ((pParams->videoType == MFX_CODEC_CAPTURE)) )
-    {
-        bVppIsUsed = m_fourcc && (m_fourcc != MFX_FOURCC_NV12) && (m_fourcc != MFX_FOURCC_RGB4);
-    }
-    else
-    {
-        bVppIsUsed = m_fourcc && (m_fourcc != m_mfxVideoParams.mfx.FrameInfo.FourCC);
-    }
-
+    /* Re-size */
     if ( (m_mfxVideoParams.mfx.FrameInfo.CropW != pParams->Width) ||
         (m_mfxVideoParams.mfx.FrameInfo.CropH != pParams->Height) )
     {
         bVppIsUsed |= pParams->Width && pParams->Height;
+#if _MSDK_API >= MSDK_API(1,22)
+        if ((MODE_DECODER_POSTPROC_AUTO == pParams->nDecoderPostProcessing) ||
+            (MODE_DECODER_POSTPROC_FORCE == pParams->nDecoderPostProcessing) )
+        {
+            /* Decoder will make decision about internal post-processing usage slightly later */
+            bVppIsUsed = false;
+        }
+#endif //_MSDK_API >= MSDK_API(1,22)
+    }
+    // JPEG and Capture decoders can provide output in nv12 and rgb4 formats
+    if ((pParams->videoType == MFX_CODEC_JPEG) ||
+        ((pParams->videoType == MFX_CODEC_CAPTURE)) )
+    {
+        bVppIsUsed |= m_fourcc && (m_fourcc != MFX_FOURCC_NV12) && (m_fourcc != MFX_FOURCC_RGB4);
+    }
+    else
+    {
+        bVppIsUsed |= m_fourcc && (m_fourcc != m_mfxVideoParams.mfx.FrameInfo.FourCC);
     }
 
     if (pParams->eDeinterlace)
@@ -491,6 +509,8 @@ bool CDecodingPipeline::IsVppRequired(sInputParams *pParams)
 void CDecodingPipeline::Close()
 {
 #if D3D_SURFACES_SUPPORT
+    m_d3dRender.Close();
+
     if (NULL != m_pS3DControl)
     {
         m_pS3DControl->SwitchTo2D(NULL);
@@ -771,6 +791,58 @@ mfxStatus CDecodingPipeline::InitMfxParams(sInputParams *pParams)
         }
     }
 
+#if _MSDK_API >= MSDK_API(1,22)
+    /* Lets make final decision how to use VPP...*/
+    if (!m_bVppIsUsed)
+    {
+
+        if ( (m_mfxVideoParams.mfx.FrameInfo.CropW != pParams->Width && pParams->Width) ||
+            (m_mfxVideoParams.mfx.FrameInfo.CropH != pParams->Height && pParams->Height) )
+        {
+            /* By default VPP used for resize */
+            m_bVppIsUsed = true;
+            /* But... lets try to use decoder's post processing */
+            if ( ((MODE_DECODER_POSTPROC_AUTO == pParams->nDecoderPostProcessing) ||
+                  (MODE_DECODER_POSTPROC_FORCE == pParams->nDecoderPostProcessing)) &&
+                 (MFX_CODEC_AVC == m_mfxVideoParams.mfx.CodecId) && /* Only for AVC */
+                 (MFX_PICSTRUCT_PROGRESSIVE == m_mfxVideoParams.mfx.FrameInfo.PicStruct)) /* ...And only for progressive!*/
+            {   /* it is possible to use decoder's post-processing */
+                m_bVppIsUsed = false;
+                m_DecoderPostProcessing.In.CropX = 0;
+                m_DecoderPostProcessing.In.CropY = 0;
+                m_DecoderPostProcessing.In.CropW = m_mfxVideoParams.mfx.FrameInfo.CropW;
+                m_DecoderPostProcessing.In.CropH = m_mfxVideoParams.mfx.FrameInfo.CropH;
+
+                m_DecoderPostProcessing.Out.FourCC = m_mfxVideoParams.mfx.FrameInfo.FourCC;
+                m_DecoderPostProcessing.Out.ChromaFormat = m_mfxVideoParams.mfx.FrameInfo.ChromaFormat;
+                m_DecoderPostProcessing.Out.Width = MSDK_ALIGN16(pParams->Width);
+                m_DecoderPostProcessing.Out.Height = MSDK_ALIGN16(pParams->Height);
+                m_DecoderPostProcessing.Out.CropX = 0;
+                m_DecoderPostProcessing.Out.CropY = 0;
+                m_DecoderPostProcessing.Out.CropW = pParams->Width;
+                m_DecoderPostProcessing.Out.CropH = pParams->Height;
+
+                m_ExtBuffers.push_back((mfxExtBuffer *)&m_DecoderPostProcessing);
+                AttachExtParam();
+                msdk_printf(MSDK_STRING("Decoder's post-processing is used for resizing\n") );
+            }
+            /* POSTPROC_FORCE */
+            if (MODE_DECODER_POSTPROC_FORCE == pParams->nDecoderPostProcessing)
+            {
+               if ((MFX_CODEC_AVC != m_mfxVideoParams.mfx.CodecId) ||
+                   (MFX_PICSTRUCT_PROGRESSIVE != m_mfxVideoParams.mfx.FrameInfo.PicStruct))
+               {
+                   /* it is impossible to use decoder's post-processing */
+                   msdk_printf(MSDK_STRING("ERROR: decoder postprocessing (-dec_postproc forced) cannot resize this stream!\n") );
+                   return MFX_ERR_UNSUPPORTED;
+               }
+            }
+            if ((m_bVppIsUsed) && (MODE_DECODER_POSTPROC_AUTO == pParams->nDecoderPostProcessing))
+                msdk_printf(MSDK_STRING("Decoder post-processing is unsupported for this stream, VPP is used for resizing\n") );
+        }
+    }
+#endif //_MSDK_API >= MSDK_API(1,22)
+
     // If MVC mode we need to detect number of views in stream
     if (m_bIsMVC)
     {
@@ -811,7 +883,12 @@ mfxStatus CDecodingPipeline::AllocAndInitVppFilters()
 {
     m_VppDoNotUse.NumAlg = 4;
 
-    m_VppDoNotUse.AlgList = new mfxU32 [m_VppDoNotUse.NumAlg];
+    /* In case of Reset() this code called twice!
+     * But required to have only one allocation to prevent memleaks
+     * Deallocation done in Close() */
+    if (NULL == m_VppDoNotUse.AlgList)
+        m_VppDoNotUse.AlgList = new mfxU32 [m_VppDoNotUse.NumAlg];
+
     if (!m_VppDoNotUse.AlgList) return MFX_ERR_NULL_PTR;
 
     m_VppDoNotUse.AlgList[0] = MFX_EXTBUFF_VPP_DENOISE; // turn off denoising (on by default)
@@ -876,6 +953,12 @@ mfxStatus CDecodingPipeline::InitVppParams()
         m_VppVideoSignalInfo.NominalRange = MFX_NOMINALRANGE_0_255;
 
         m_VppSurfaceExtParams.push_back((mfxExtBuffer*)&m_VppVideoSignalInfo);
+    }
+
+    // P010 video surfaces should be shifted
+    if (m_mfxVppVideoParams.vpp.Out.FourCC == MFX_FOURCC_P010 && m_memType != SYSTEM_MEMORY)
+    {
+        m_mfxVppVideoParams.vpp.Out.Shift = 1;
     }
 
     return MFX_ERR_NONE;
@@ -964,9 +1047,12 @@ mfxStatus CDecodingPipeline::AllocFrames()
     MSDK_ZERO_MEMORY(VppRequest[0]);
     MSDK_ZERO_MEMORY(VppRequest[1]);
 
-    sts = m_pmfxDEC->Query(&m_mfxVideoParams, &m_mfxVideoParams);
-    MSDK_IGNORE_MFX_STS(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
-    MSDK_CHECK_STATUS(sts, "m_pmfxDEC->Query failed");
+    if (m_mfxVideoParams.mfx.FrameInfo.FourCC != MFX_FOURCC_P210) // TODO: workaround for P210, delete later
+    {
+        sts = m_pmfxDEC->Query(&m_mfxVideoParams, &m_mfxVideoParams);
+        MSDK_IGNORE_MFX_STS(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
+        MSDK_CHECK_STATUS(sts, "m_pmfxDEC->Query failed");
+    }
 
     // calculate number of surfaces required for decoder
     sts = m_pmfxDEC->QueryIOSurf(&m_mfxVideoParams, &Request);
@@ -1690,8 +1776,8 @@ mfxStatus CDecodingPipeline::RunDecoding()
                 sts = m_pmfxDEC->DecodeFrameAsync(pBitstream, &(m_pCurrentFreeSurface->frame), &pOutSurface, &(m_pCurrentFreeOutputSurface->syncp));
                 if (pBitstream && MFX_ERR_MORE_DATA == sts && pBitstream->MaxLength == pBitstream->DataLength)
                 {
-                    mfxStatus sts = ExtendMfxBitstream(pBitstream, pBitstream->MaxLength * 2);
-                    MSDK_CHECK_STATUS_SAFE(sts, "ExtendMfxBitstream failed", MSDK_SAFE_DELETE(pDeliverThread));
+                    mfxStatus stsExt = ExtendMfxBitstream(pBitstream, pBitstream->MaxLength * 2);
+                    MSDK_CHECK_STATUS_SAFE(stsExt, "ExtendMfxBitstream failed", MSDK_SAFE_DELETE(pDeliverThread));
                 }
 
                 if (MFX_WRN_DEVICE_BUSY == sts) {
@@ -1783,7 +1869,7 @@ mfxStatus CDecodingPipeline::RunDecoding()
                             m_pCurrentFreeVppSurface->frame.Info.PicStruct = pOutSurface->Info.PicStruct = MFX_PICSTRUCT_PROGRESSIVE;
                         }
 
-                        if (m_diMode && m_pCurrentFreeVppSurface)
+                        if (m_diMode)
                             m_pCurrentFreeVppSurface->frame.Info.PicStruct = MFX_PICSTRUCT_PROGRESSIVE;
 
                         // WA: RunFrameVPPAsync doesn't copy ViewId from input to output
@@ -1867,7 +1953,7 @@ mfxStatus CDecodingPipeline::RunDecoding()
 
 void CDecodingPipeline::PrintInfo()
 {
-    msdk_printf(MSDK_STRING("Decoding Sample Version %s\n\n"), MSDK_SAMPLE_VERSION);
+    msdk_printf(MSDK_STRING("Decoding Sample Version %s\n\n"), GetMSDKSampleVersion().c_str());
     msdk_printf(MSDK_STRING("\nInput video\t%s\n"), CodecIdToStr(m_mfxVideoParams.mfx.CodecId).c_str());
     if (m_bVppIsUsed)
     {

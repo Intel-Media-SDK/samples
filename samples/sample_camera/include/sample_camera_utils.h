@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -151,7 +151,6 @@ typedef struct _ownFrameInfo
   mfxU32  CropY;
   mfxU32  CropW;
   mfxU32  CropH;
-
   mfxU32 FourCC;
   mfxF64 dFrameRate;
 
@@ -189,6 +188,14 @@ typedef struct _resetParams
     mfxF64 white_balance_G1;
     mfxF64 white_balance_R;
 
+    bool  bTCC;
+    mfxU8 tcc_red;
+    mfxU8 tcc_green;
+    mfxU8 tcc_blue;
+    mfxU8 tcc_cyan;
+    mfxU8 tcc_magenta;
+    mfxU8 tcc_yellow;
+
     bool   bCCM;
     mfxF64 CCM[3][3];
 
@@ -210,12 +217,18 @@ typedef struct _resetParams
     {
         bHP           = false;
         bBlackLevel   = false;
+        bTCC          = false;
         bWhiteBalance = false;
         bCCM          = false;
         bDenoise      = false;
         bVignette     = false;
         width = height = cropX = cropY = cropW = cropH = 0;
-
+        tcc_red = 255;
+        tcc_green = 255;
+        tcc_blue = 255;
+        tcc_cyan = 255;
+        tcc_magenta = 255;
+        tcc_yellow = 255;
         MSDK_ZERO_MEMORY(strSrcFile);
         MSDK_ZERO_MEMORY(strDstFile);
         MSDK_ZERO_MEMORY(strVignetteMaskFile);
@@ -254,6 +267,7 @@ struct sInputParams
 
     bool   bGamma;
     bool   b3DLUTGamma;
+    bool   bRGBToYUV;
     bool   bExternalGammaLUT;
     mfxU16 gamma_point[64];
     mfxU16 gamma_corrected[64];
@@ -266,6 +280,13 @@ struct sInputParams
     mfxU16 black_level_G1;
     mfxU16 black_level_R;
 
+    bool  bTCC;
+    mfxU8 tcc_red;
+    mfxU8 tcc_green;
+    mfxU8 tcc_blue;
+    mfxU8 tcc_cyan;
+    mfxU8 tcc_magenta;
+    mfxU8 tcc_yellow;
     bool   bWhiteBalance;
     mfxF64 white_balance_B;
     mfxF64 white_balance_G0;
@@ -286,6 +307,10 @@ struct sInputParams
     mfxF32 lens_cB;
     mfxF32 lens_dB;
 
+    bool offset;
+    mfxF32 pre[3];
+    mfxF32 post[3];
+
     bool   bCCM;
     mfxF64 CCM[3][3];
 
@@ -302,7 +327,7 @@ struct sInputParams
 
     std::vector<sResetParams> resetParams;
     mfxU32 resetInterval;
-
+    bool bPerf_opt;
     bool bDoPadding;
 
     bool b3DLUT;
@@ -362,8 +387,8 @@ struct sInputParams
         MSDK_ZERO_MEMORY(strSrcFile);
         MSDK_ZERO_MEMORY(strDstFile);
         MSDK_ZERO_MEMORY(strPluginPath);
-
-        bDoPadding=false;
+        bPerf_opt = false;
+        bDoPadding = false;
 
         CameraPluginVersion = 1;
         inputType     = MFX_CAM_BAYER_RGGB;
@@ -390,7 +415,20 @@ struct sInputParams
         bVignette     = false;
         bLens         = false;
         b3DLUT        = false;
-
+        bTCC          = false;
+        tcc_red = 255;
+        tcc_green = 255;
+        tcc_blue = 255;
+        tcc_cyan = 255;
+        tcc_magenta = 255;
+        tcc_yellow = 255;
+        bRGBToYUV     = false;
+        offset = false;
+        for (int i = 0; i < 3; i++)
+            pre[i] = 0;
+        post[0] = 2048;
+        post[1] = 16384;
+        post[2] = 16384;
         alphaValue = -1;
         resetInterval = 7;
         bExternalGammaLUT = false;
@@ -469,6 +507,37 @@ protected:
     mfxU32      m_Height;
 };
 
+
+class CBufferedVideoReader : public CVideoReader
+{
+public:
+    CBufferedVideoReader() : m_fSrc(0), m_Height(0), m_Width(0), m_FileNum(0), nCurrentFrame(0), nFramesToProceed(0), m_DoPadding(false)
+    {
+        MSDK_ZERO_MEMORY(m_FileNameBase);
+    };
+
+    virtual ~CBufferedVideoReader();
+    void Close();
+    mfxStatus  Init(sInputParams *pParams);
+    mfxStatus  LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInfo, mfxU32 type);
+    void  SetStartFileNumber(mfxI32 fileNum)
+    {
+        m_FileNum = fileNum;
+    }
+
+protected:
+    FILE*       m_fSrc;
+    msdk_char   m_FileNameBase[MSDK_MAX_FILENAME_LEN];
+    mfxU32      m_FileNum;
+    bool        m_DoPadding;
+    mfxU32      m_Width;
+    mfxU32      m_Height;
+    mfxU32      nFramesToProceed;
+    mfxU32      nCurrentFrame;
+
+    std::vector<mfxU16*> buffer;
+};
+
 class CBmpWriter
 {
 public :
@@ -498,7 +567,8 @@ public :
   //~CRawVideoWriter();
 
   mfxStatus  Init(sInputParams *pParams);
-  mfxStatus  WriteFrame(mfxFrameData* pData, const msdk_char *fileExt, mfxFrameInfo* pInfo);
+  mfxStatus  WriteFrameARGB16(mfxFrameData* pData, const msdk_char *fileExt, mfxFrameInfo* pInfo);
+  mfxStatus  WriteFrameNV12(mfxFrameData* pData, const msdk_char *fileExt, mfxFrameInfo* pInfo);
 
 protected:
     msdk_char    m_FileNameBase[MSDK_MAX_FILENAME_LEN];

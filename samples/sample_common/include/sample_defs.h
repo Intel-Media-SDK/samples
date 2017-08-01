@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -27,6 +27,9 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "vm/strings_defs.h"
 #include "vm/file_defs.h"
 #include "vm/time_defs.h"
+
+#define _MSDK_API (MFX_VERSION_MAJOR*256+MFX_VERSION_MINOR)
+#define MSDK_API(M,MM) (M*256+MM)
 
 #if defined(WIN32) || defined(WIN64)
 
@@ -108,8 +111,8 @@ enum LibVABackend
 
 #define MSDK_MAX_FILENAME_LEN 1024
 
-#define MSDK_PRINT_RET_MSG(ERR,MSG) {msdk_stringstream tmpStr22;tmpStr22<<std::endl<<"[ERROR], sts=" \
-    <<StatusToString(ERR)<<"("<<ERR<<")"<<", "<<__FUNCTION__<<", "<<MSG<<" at "<<__FILE__<<":"<<__LINE__<<std::endl;msdk_err<<tmpStr22.str();}
+#define MSDK_PRINT_RET_MSG(ERR,MSG) {msdk_stringstream tmpStr1;tmpStr1<<std::endl<<"[ERROR], sts=" \
+    <<StatusToString(ERR)<<"("<<ERR<<")"<<", "<<__FUNCTION__<<", "<<MSG<<" at "<<__FILE__<<":"<<__LINE__<<std::endl;msdk_err<<tmpStr1.str();}
 
 #define MSDK_TRACE_LEVEL(level, ERR) if (level <= msdk_trace_get_level()) {msdk_err<<NoFullPath(MSDK_STRING(__FILE__)) << MSDK_STRING(" :")<< __LINE__ <<MSDK_STRING(" [") \
     <<level<<MSDK_STRING("] ") << ERR << std::endl;}
@@ -120,19 +123,19 @@ enum LibVABackend
 #define MSDK_TRACE_INFO(ERR) MSDK_TRACE_LEVEL(MSDK_TRACE_LEVEL_INFO, ERR)
 #define MSDK_TRACE_DEBUG(ERR) MSDK_TRACE_LEVEL(MSDK_TRACE_LEVEL_DEBUG, ERR)
 
-#define MSDK_CHECK_ERROR(P, X, ERR)              {if ((X) == (P)) {msdk_stringstream tmpStr22;tmpStr22<<MSDK_STRING(#X)<<MSDK_STRING("==")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
-    MSDK_PRINT_RET_MSG(ERR, tmpStr22.str().c_str()); return ERR;}}
+#define MSDK_CHECK_ERROR(P, X, ERR)              {if ((X) == (P)) {msdk_stringstream tmpStr2;tmpStr2<<MSDK_STRING(#X)<<MSDK_STRING("==")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
+    MSDK_PRINT_RET_MSG(ERR, tmpStr2.str().c_str()); return ERR;}}
 
-#define MSDK_CHECK_NOT_EQUAL(P, X, ERR)          {if ((X) != (P)) {msdk_stringstream tmpStr22;tmpStr22<<MSDK_STRING(#X)<<MSDK_STRING("!=")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
-    MSDK_PRINT_RET_MSG(ERR, tmpStr22.str().c_str()); return ERR;}}
+#define MSDK_CHECK_NOT_EQUAL(P, X, ERR)          {if ((X) != (P)) {msdk_stringstream tmpStr3;tmpStr3<<MSDK_STRING(#X)<<MSDK_STRING("!=")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
+    MSDK_PRINT_RET_MSG(ERR, tmpStr3.str().c_str()); return ERR;}}
 
 #define MSDK_CHECK_STATUS(X, MSG)               {if ((X) < MFX_ERR_NONE) {MSDK_PRINT_RET_MSG(X, MSG); return X;}}
 #define MSDK_CHECK_PARSE_RESULT(P, X, ERR)       {if ((X) > (P)) {return ERR;}}
 
 #define MSDK_CHECK_STATUS_SAFE(X, FUNC, ADD)     {if ((X) < MFX_ERR_NONE) {ADD; MSDK_PRINT_RET_MSG(X, FUNC); return X;}}
 #define MSDK_IGNORE_MFX_STS(P, X)                {if ((X) == (P)) {P = MFX_ERR_NONE;}}
-#define MSDK_CHECK_POINTER(P, ...)               {if (!(P)) {msdk_stringstream tmpStr22;tmpStr22<<MSDK_STRING(#P)<<MSDK_STRING(" pointer is NULL");MSDK_PRINT_RET_MSG(MFX_ERR_NULL_PTR, tmpStr22.str().c_str());return __VA_ARGS__;}}
-#define MSDK_CHECK_POINTER_NO_RET(P)             {if (!(P)) {return;}}
+#define MSDK_CHECK_POINTER(P, ...)               {if (!(P)) {msdk_stringstream tmpStr4;tmpStr4<<MSDK_STRING(#P)<<MSDK_STRING(" pointer is NULL");MSDK_PRINT_RET_MSG(MFX_ERR_NULL_PTR, tmpStr4.str().c_str());return __VA_ARGS__;}}
+#define MSDK_CHECK_POINTER_NO_RET(P)             {if (!(P)) {msdk_stringstream tmpStr4;tmpStr4<<MSDK_STRING(#P)<<MSDK_STRING(" pointer is NULL");MSDK_PRINT_RET_MSG(MFX_ERR_NULL_PTR, tmpStr4.str().c_str());return;}}
 #define MSDK_CHECK_POINTER_SAFE(P, ERR, ADD)     {if (!(P)) {ADD; return ERR;}}
 #define MSDK_BREAK_ON_ERROR(P)                   {if (MFX_ERR_NONE != (P)) break;}
 #define MSDK_SAFE_DELETE_ARRAY(P)                {if (P) {delete[] P; P = NULL;}}
@@ -154,12 +157,6 @@ enum LibVABackend
 #ifndef UNREFERENCED_PARAMETER
 #define UNREFERENCED_PARAMETER(par) (par)
 #endif
-
-#ifndef MFX_PRODUCT_VERSION
-#define MFX_PRODUCT_VERSION "1.0.0.0"
-#endif
-
-#define MSDK_SAMPLE_VERSION MSDK_STRING(MFX_PRODUCT_VERSION)
 
 #define MFX_IMPL_VIA_MASK(x) (0x0f00 & (x))
 

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -22,13 +22,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "encoding_task_pool.h"
 #include "predictors_repacking.h"
-
-// Extensions for internal use, normally these macros are blank
-#ifdef MOD_FEI
-#include "extension_macros.h"
-#else
-    #define MSDK_DEBUG
-#endif
 
 class FEI_EncPakInterface
 {
@@ -54,7 +47,7 @@ public:
     /* Bitstream writer */
     CSmplBitstreamWriter m_FileWriter;
 
-    /* For I/O operations with extended buffers */
+    /* For I/O operations with extension buffers */
     FILE* m_pMvPred_in;
     FILE* m_pENC_MBCtrl_in;
     FILE* m_pMbQP_in;
@@ -77,7 +70,7 @@ public:
     mfxStatus Init();
     mfxStatus Close();
     mfxStatus Reset(mfxU16 width = 0, mfxU16 height = 0, mfxU16 crop_w = 0, mfxU16 crop_h = 0);
-    mfxStatus QueryIOSurf(mfxFrameAllocRequest* enc_request = NULL, mfxFrameAllocRequest* pak_request = NULL);
+    mfxStatus QueryIOSurf(mfxFrameAllocRequest* request);
     mfxVideoParam* GetCommonVideoParams();
     mfxStatus UpdateVideoParam();
 
@@ -90,15 +83,21 @@ public:
                     mfxU16 & numRefActiveP,
                     mfxU16 & numRefActiveBL0,
                     mfxU16 & numRefActiveBL1,
-                    mfxU16 & bRefType);
+                    mfxU16 & bRefType,
+                    bool   & bSigleFieldProcessing);
 
     mfxStatus FillParameters();
+#if MFX_VERSION < 1023
     mfxStatus FillRefInfo(iTask* eTask);
+#endif // MFX_VERSION < 1023
     mfxStatus InitFrameParams(iTask* eTask);
-    mfxStatus ReadPAKdata(iTask* eTask);
     mfxStatus AllocateSufficientBuffer();
     mfxStatus EncPakOneFrame(iTask* eTask);
     mfxStatus FlushOutput(iTask* eTask);
     mfxStatus ResetState();
+
+    // Decode StreamOut -> PAK
+    mfxStatus PakOneStreamoutFrame(iTask *eTask, mfxU8 QP, iTaskPool *pTaskList);
 };
+
 #endif // __SAMPLE_FEI_ENCPAK_INTERFACE_H__

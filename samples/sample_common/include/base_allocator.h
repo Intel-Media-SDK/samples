@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -81,6 +81,8 @@ protected:
                                             MFX_MEMTYPE_FROM_VPPIN | MFX_MEMTYPE_FROM_VPPOUT | \
                                             MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK;
 
+    static const mfxU32 MEMTYPE_FROM_MASK_INT_EXT = MEMTYPE_FROM_MASK | MFX_MEMTYPE_INTERNAL_FRAME | MFX_MEMTYPE_EXTERNAL_FRAME;
+
     struct UniqueResponse
         : mfxFrameAllocResponse
     {
@@ -107,10 +109,43 @@ protected:
             , m_type(type)
         {
         }
-        //compare by resolution
+
+        //compare by resolution (and memory type for FEI ENC / PAK)
         bool operator () (const UniqueResponse &response)const
         {
-            return m_width <= response.m_width && m_height <= response.m_height && (m_type&response.m_type)&(MFX_MEMTYPE_FROM_DECODE | MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK);
+            if (m_width <= response.m_width && m_height <= response.m_height)
+            {
+                // For FEI ENC and PAK we need to distinguish between INTERNAL and EXTERNAL frames
+
+                if (m_type & response.m_type & (MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK))
+                {
+                    return !!((m_type & response.m_type) & 0x000f);
+                }
+                else
+                {
+                    return !!(m_type & response.m_type & MFX_MEMTYPE_FROM_DECODE);
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        static mfxU16 CropMemoryTypeToStore(mfxU16 type)
+        {
+            // Remain INTERNAL / EXTERNAL flag for FEI ENC / PAK
+            switch (type & 0xf000)
+            {
+            case MFX_MEMTYPE_FROM_ENC:
+            case MFX_MEMTYPE_FROM_PAK:
+            case (MFX_MEMTYPE_FROM_ENC | MFX_MEMTYPE_FROM_PAK):
+                return type & MEMTYPE_FROM_MASK_INT_EXT;
+                break;
+            default:
+                return type & MEMTYPE_FROM_MASK;
+                break;
+            }
         }
     };
 

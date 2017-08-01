@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -21,10 +21,11 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "pipeline_decode.h"
 #include <sstream>
+#include "version.h"
 
 void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
 {
-    msdk_printf(MSDK_STRING("Decoding Sample Version %s\n\n"), MSDK_SAMPLE_VERSION);
+    msdk_printf(MSDK_STRING("Decoding Sample Version %s\n\n"), GetMSDKSampleVersion().c_str());
 
     if (strErrorMessage)
     {
@@ -37,7 +38,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Supported codecs (<codecid>):\n"));
     msdk_printf(MSDK_STRING("   <codecid>=h264|mpeg2|vc1|mvc|jpeg - built-in Media SDK codecs\n"));
-    msdk_printf(MSDK_STRING("   <codecid>=h265|capture            - in-box Media SDK plugins (may require separate downloading and installation)\n"));
+    msdk_printf(MSDK_STRING("   <codecid>=h265|vp9|capture            - in-box Media SDK plugins (may require separate downloading and installation)\n"));
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Work models:\n"));
     msdk_printf(MSDK_STRING("  1. Performance model: decoding on MAX speed, no rendering, no YUV dumping (no -r or -o option)\n"));
@@ -101,6 +102,14 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-async]                  - depth of asynchronous pipeline. default value is 4. must be between 1 and 20\n"));
     msdk_printf(MSDK_STRING("   [-gpucopy::<on,off>] Enable or disable GPU copy mode\n"));
     msdk_printf(MSDK_STRING("   [-timeout]                - timeout in seconds\n"));
+#if _MSDK_API >= MSDK_API(1,22)
+    msdk_printf(MSDK_STRING("   [-dec_postproc force/auto] - resize after decoder using direct pipe\n"));
+    msdk_printf(MSDK_STRING("                  force: instruct to use decoder-based post processing\n"));
+    msdk_printf(MSDK_STRING("                         or fail if the decoded stream is unsupported\n"));
+    msdk_printf(MSDK_STRING("                  auto: instruct to use decoder-based post processing for supported streams \n"));
+    msdk_printf(MSDK_STRING("                        or perform VPP operation through separate pipeline component for unsupported streams\n"));
+
+#endif //_MSDK_API >= MSDK_API(1,22)
 #if !defined(_WIN32) && !defined(_WIN64)
     msdk_printf(MSDK_STRING("   [-threads_num]            - number of mediasdk task threads\n"));
     msdk_printf(MSDK_STRING("   [-threads_schedtype]      - scheduling type of mediasdk task threads\n"));
@@ -360,7 +369,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for -di key"));
                 return MFX_ERR_UNSUPPORTED;
             }
-            msdk_char diMode[4] = {};
+            msdk_char diMode[32] = {};
             if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], diMode))
             {
                 PrintHelp(strInput[0], MSDK_STRING("deinterlace value is not set"));
@@ -430,6 +439,35 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             }
         }
 #endif // #if !defined(_WIN32) && !defined(_WIN64)
+#if _MSDK_API >= MSDK_API(1,22)
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-dec_postproc")))
+        {
+            if(i + 1 >= nArgNum)
+            {
+                PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for \"-dec_postproc\", right is  \"--dec_postproc force//auto\""));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            msdk_char postProcMode[32] = {};
+            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], postProcMode))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("dec_postproc value is not set"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            if (0 == msdk_strcmp(postProcMode, MSDK_STRING("auto")))
+            {
+                pParams->nDecoderPostProcessing = MODE_DECODER_POSTPROC_AUTO;
+            }
+            else if (0 == msdk_strcmp(postProcMode, MSDK_STRING("force")))
+            {
+                pParams->nDecoderPostProcessing = MODE_DECODER_POSTPROC_FORCE;
+            }
+            else
+            {
+                PrintHelp(strInput[0], MSDK_STRING("dec_postproc is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+#endif //_MSDK_API >= MSDK_API(1,22)
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-f")))
         {
             if(i + 1 >= nArgNum)

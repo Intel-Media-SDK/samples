@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -22,6 +22,8 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <new> // std::bad_alloc
 #include <stdio.h> // setrlimit
 #include <sched.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 #include "vm/thread_defs.h"
 #include "sample_utils.h"
@@ -307,6 +309,11 @@ void msdk_thread_printf_scheduling_help()
     msdk_printf(MSDK_STRING("you can do that process-wise using dynamic priority - so called nice value.\n"));
     msdk_printf(MSDK_STRING("Range for the nice value is: %d .. %d (high .. low)\n"), PRIO_MIN, PRIO_MAX);
     msdk_printf(MSDK_STRING("Please, see 'man(1) nice' for details.\n"));
+}
+
+mfxU32 msdk_get_current_pid()
+{
+    return syscall(SYS_getpid);
 }
 
 #endif // #if !defined(_WIN32) && !defined(_WIN64)

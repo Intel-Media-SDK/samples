@@ -1,5 +1,5 @@
 ##******************************************************************************
-##  Copyright(C) 2012-2015 Intel Corporation. All Rights Reserved.
+##  Copyright(C) 2012-2017 Intel Corporation. All Rights Reserved.
 ##
 ##  The source code, information  and  material ("Material") contained herein is
 ##  owned  by Intel Corporation or its suppliers or licensors, and title to such
@@ -33,20 +33,15 @@ set( CMAKE_INSTALL_RPATH "" )
 set( CMAKE_BUILD_WITH_INSTALL_RPATH TRUE )
 set( CMAKE_SKIP_BUILD_RPATH TRUE )
 
-collect_oses( )
-collect_arch( )
+collect_oses()
+collect_arch()
 
-if( Windows )
-  message( FATAL_ERROR "Windows is not currently supported!" )
-
-else( )
-
+if( Linux OR Darwin )
   # If user did not override CMAKE_INSTALL_PREFIX, then set the default prefix
-  # to /opt/intel/mediasdk/samples instead of cmake's default
+  # to /opt/intel/mediasdk instead of cmake's default
   if( CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT )
-    set( CMAKE_INSTALL_PREFIX /opt/intel/mediasdk/samples CACHE PATH "Install Path Prefix" FORCE )
-  endif( )
-  message( STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}" )
+    set( CMAKE_INSTALL_PREFIX /opt/intel/mediasdk CACHE PATH "Install Path Prefix" FORCE )
+  endif()
 
   add_definitions(-DUNIX)
 
@@ -58,8 +53,8 @@ else( )
 
     if(__ARCH MATCHES intel64)
       add_definitions(-DLINUX64)
-    endif( )
-  endif( )
+    endif()
+  endif()
 
   if( Darwin )
     add_definitions(-DOSX)
@@ -67,14 +62,14 @@ else( )
 
     if(__ARCH MATCHES intel64)
       add_definitions(-DOSX64)
-    endif( )
-  endif( )
+    endif()
+  endif()
 
   if( NOT DEFINED ENV{MFX_VERSION} )
     set( version 0.0.000.0000 )
-  else( )
+  else()
     set( version $ENV{MFX_VERSION} )
-  endif( )
+  endif()
 
   if( Linux OR Darwin )
     execute_process(
@@ -88,18 +83,25 @@ else( )
 
     add_definitions( -DMFX_FILE_VERSION=\"${ver}${cur_date}\")
     add_definitions( -DMFX_PRODUCT_VERSION=\"${version}\" )
-  endif( )
+    add_definitions( -DMSDK_BUILD=\"$ENV{BUILD_NUMBER}\")
+  endif()
 
-  set(no_warnings "-Wno-unknown-pragmas -Wno-unused")
-  
+  set(no_warnings "-Wno-deprecated-declarations -Wno-unknown-pragmas -Wno-unused")
   set(CMAKE_C_FLAGS "-pipe -fPIC")
   set(CMAKE_CXX_FLAGS "-pipe -fPIC")
-  append("-fPIE -pie" CMAKE_EXE_LINKER_FLAGS)
+  append("-fPIE -pie" CMAKE_EXEC_LINKER_FLAGS)
 
-  set(CMAKE_C_FLAGS_DEBUG     "-O0 -Wall ${no_warnings} -g -D_DEBUG" CACHE STRING "" FORCE)
-  set(CMAKE_C_FLAGS_RELEASE   "-O2 -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wall ${no_warnings} -DNDEBUG"    CACHE STRING "" FORCE)
-  set(CMAKE_CXX_FLAGS_DEBUG   "-O0 -Wall ${no_warnings} -g -D_DEBUG" CACHE STRING "" FORCE)
-  set(CMAKE_CXX_FLAGS_RELEASE "-O2 -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wall ${no_warnings} -DNDEBUG"    CACHE STRING "" FORCE)
+  # CACHE + FORCE should be used only here to make sure that this parameters applied globally
+  set(CMAKE_C_FLAGS_DEBUG     "-O0 -Wall ${no_warnings}  -Wformat -Wformat-security -g -D_DEBUG" CACHE STRING "" FORCE)
+  set(CMAKE_C_FLAGS_RELEASE   "-O2 -D_FORTIFY_SOURCE=2 -fstack-protector -Wall ${no_warnings} -Wformat -Wformat-security -DNDEBUG"    CACHE STRING "" FORCE)
+  set(CMAKE_CXX_FLAGS_DEBUG   "-O0 -Wall ${no_warnings}  -Wformat -Wformat-security -g -D_DEBUG" CACHE STRING "" FORCE)
+  set(CMAKE_CXX_FLAGS_RELEASE "-O2 -D_FORTIFY_SOURCE=2 -fstack-protector -Wall ${no_warnings}  -Wformat -Wformat-security -DNDEBUG"    CACHE STRING "" FORCE)
+
+  if ( Darwin )
+    if (CMAKE_C_COMPILER MATCHES clang)
+       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -v -std=c++11 -stdlib=libc++")
+    endif()
+  endif()
 
   if (DEFINED CMAKE_FIND_ROOT_PATH)
 #    append("--sysroot=${CMAKE_FIND_ROOT_PATH} " CMAKE_C_FLAGS)
@@ -107,39 +109,39 @@ else( )
     append("--sysroot=${CMAKE_FIND_ROOT_PATH} " LINK_FLAGS)
   endif (DEFINED CMAKE_FIND_ROOT_PATH)
 
-  # SW HEVC decoder & encoder require SSE4.2
-  if (CMAKE_C_COMPILER MATCHES icc)
-    append("-xSSE4.2 -static-intel" CMAKE_C_FLAGS)
-  else()
-    append("-msse4.2" CMAKE_C_FLAGS)
-  endif()
-
-  if (CMAKE_CXX_COMPILER MATCHES icpc)
-    append("-xSSE4.2 -static-intel" CMAKE_CXX_FLAGS)
-  else()
-    append("-msse4.2" CMAKE_CXX_FLAGS)
-  endif()
-
   if(__ARCH MATCHES ia32)
-    append("-m32" CMAKE_C_FLAGS)
-    append("-m32" CMAKE_CXX_FLAGS)
-    append("-m32" LINK_FLAGS)
-  else ( )
-    append("-m64" CMAKE_C_FLAGS)
-    append("-m64" CMAKE_CXX_FLAGS)
-    append("-m64" LINK_FLAGS)
-  endif( )
+    append("-m32 -g" CMAKE_C_FLAGS)
+    append("-m32 -g" CMAKE_CXX_FLAGS)
+    append("-m32 -g" LINK_FLAGS)
+  else ()
+    append("-m64 -g" CMAKE_C_FLAGS)
+    append("-m64 -g" CMAKE_CXX_FLAGS)
+    append("-m64 -g" LINK_FLAGS)
+  endif()
 
   if(__ARCH MATCHES ia32)
     link_directories(/usr/lib)
-    set( MFX_SAMPLES_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX} )
-    set( MFX_SAMPLES_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX} )
-  else ( )
+  else()
     link_directories(/usr/lib64)
-    set( MFX_SAMPLES_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX} )
-    set( MFX_SAMPLES_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX} )
-  endif( )
+  endif()
+elseif( Windows )
+  if( CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT )
+    set( CMAKE_INSTALL_PREFIX "C:/Program Files/mediasdk/" CACHE PATH "Install Path Prefix" FORCE )
+  endif()
 endif( )
+
+if(__ARCH MATCHES ia32)
+  set( MFX_MODULES_DIR ${CMAKE_INSTALL_PREFIX}/lib )
+  set( MFX_SAMPLES_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/samples )
+  set( MFX_SAMPLES_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/samples )
+else()
+  set( MFX_MODULES_DIR ${CMAKE_INSTALL_PREFIX}/lib64 )
+  set( MFX_SAMPLES_INSTALL_BIN_DIR ${CMAKE_INSTALL_PREFIX}/samples )
+  set( MFX_SAMPLES_INSTALL_LIB_DIR ${CMAKE_INSTALL_PREFIX}/samples )
+endif()
+
+message( STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}" )
+set( MFX_PLUGINS_DIR ${CMAKE_INSTALL_PREFIX}/plugins )
 
 # Some font definitions: colors, bold text, etc.
 if(NOT Windows)

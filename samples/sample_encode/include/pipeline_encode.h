@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -85,7 +85,6 @@ struct sInputParams
     mfxU16 nQuality; // quality parameter for JPEG encoder
 
     mfxU32 numViews; // number of views for Multi-View Codec
-
     mfxU16 nDstWidth; // destination picture width, specified if resizing required
     mfxU16 nDstHeight; // destination picture height, specified if resizing required
 
@@ -113,6 +112,9 @@ struct sInputParams
     mfxU16 nQPB;
 
     mfxU16 nGPB;
+    mfxU16 nExtBRC;
+
+    mfxU16 TransferMatrix;
 
     bool enableQSVFF;
 
@@ -130,8 +132,13 @@ struct sInputParams
     mfxU16 BufferSizeInKB;
     mfxU16 InitialDelayInKB;
     mfxU16 GopOptFlag;
+    mfxU32 nMaxFrameSize;
 
-    bool   bUncut;
+    bool bUncut;
+    bool shouldUseShiftedP010Enc;
+    bool shouldUseShiftedP010VPP;
+
+    msdk_char DumpFileName[MSDK_MAX_FILENAME_LEN];
 
 #if defined (ENABLE_V4L2_SUPPORT)
     msdk_char DeviceName[MSDK_MAX_FILENAME_LEN];
@@ -253,6 +260,9 @@ protected:
     mfxExtHEVCParam m_ExtHEVCParam;
     mfxExtCodingOption3 m_CodingOption3;
 
+    // Set up video signal information
+    mfxExtVideoSignalInfo m_VideoSignalInfo;
+
     // external parameters for each component are stored in a vector
     std::vector<mfxExtBuffer*> m_VppExtParams;
     std::vector<mfxExtBuffer*> m_EncExtParams;
@@ -302,6 +312,8 @@ protected:
     virtual mfxStatus GetFreeTask(sTask **ppTask);
     virtual MFXVideoSession& GetFirstSession(){return m_mfxSession;}
     virtual MFXVideoENCODE* GetFirstEncoder(){return m_pmfxENC;}
+
+    virtual mfxU32 FileFourCC2EncFourCC(mfxU32 fcc);
 };
 
 #endif // __PIPELINE_ENCODE_H__

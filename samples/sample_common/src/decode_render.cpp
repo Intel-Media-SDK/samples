@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2016, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -61,6 +61,10 @@ CDecodeD3DRender::CDecodeD3DRender()
     m_Hwnd = 0;
     MSDK_ZERO_MEMORY(m_rect);
     m_style = 0;
+
+    MSDK_ZERO_MEMORY(shiftedSurface);
+    MSDK_ZERO_MEMORY(shiftSurfaceResponse);
+    pAllocator=NULL;
 }
 
 BOOL CALLBACK CDecodeD3DRender::MonitorEnumProc(HMONITOR /*hMonitor*/,
@@ -83,11 +87,24 @@ BOOL CALLBACK CDecodeD3DRender::MonitorEnumProc(HMONITOR /*hMonitor*/,
 
 CDecodeD3DRender::~CDecodeD3DRender()
 {
-    if (m_Hwnd)
-        DestroyWindow(m_Hwnd);
-
-    //DestroyTimer();
+    Close();
 }
+
+void CDecodeD3DRender::Close()
+{
+    if (m_Hwnd)
+    {
+        DestroyWindow(m_Hwnd);
+        m_Hwnd=NULL;
+    }
+
+    if(pAllocator)
+    {
+        pAllocator->Free(pAllocator->pthis,&shiftSurfaceResponse);
+        pAllocator=NULL;
+    }
+}
+
 
 mfxStatus CDecodeD3DRender::Init(sWindowParams pWParams)
 {
@@ -100,7 +117,7 @@ mfxStatus CDecodeD3DRender::Init(sWindowParams pWParams)
     MSDK_ZERO_MEMORY(window);
 
     window.lpfnWndProc= (WNDPROC)WindowProc;
-    window.hInstance= GetModuleHandle(NULL);;
+    window.hInstance= GetModuleHandle(NULL);
     window.hCursor= LoadCursor(NULL, IDC_ARROW);
     window.lpszClassName= m_sWindowParams.lpClassName;
 
@@ -167,11 +184,42 @@ mfxStatus CDecodeD3DRender::Init(sWindowParams pWParams)
 mfxStatus CDecodeD3DRender::RenderFrame(mfxFrameSurface1 *pSurface, mfxFrameAllocator *pmfxAlloc)
 {
     RECT rect;
+    mfxStatus sts = MFX_ERR_NONE;
+
     GetClientRect(m_Hwnd, &rect);
+
     if (IsRectEmpty(&rect))
         return MFX_ERR_UNKNOWN;
 
-    mfxStatus sts = m_hwdev->RenderFrame(pSurface, pmfxAlloc);
+    //--- In case of 10 bit surfaces and SW library we have to copy it and shift its data
+    if(pSurface->Info.FourCC == MFX_FOURCC_P010 && !pSurface->Info.Shift)
+    {
+        sts = AllocateShiftedSurfaceIfNeeded(pSurface,pmfxAlloc);
+        MSDK_CHECK_STATUS(sts, "AllocateShiftedSurfaceIfNeeded failed");
+
+        sts = pAllocator->Lock(pAllocator->pthis,shiftedSurface.Data.MemId,&shiftedSurface.Data);
+        MSDK_CHECK_STATUS(sts, "pAllocator->Lock of shiftedSurface failed");
+        sts = pAllocator->Lock(pAllocator->pthis,pSurface->Data.MemId,&pSurface->Data);
+        MSDK_CHECK_STATUS(sts, "pAllocator->Lock of pSurface failed");
+
+        int wordsNum = pSurface->Data.Pitch*pSurface->Info.Height*3/16; // Number of 8-byte words
+        mfxU64* pBuf = (mfxU64*)pSurface->Data.Y16;
+        mfxU64* pDestBuf = (mfxU64*)shiftedSurface.Data.Y16;
+        for(int i=0;i<wordsNum;i++)
+        {
+            pDestBuf[i] = (pBuf[i]<<6)&0xFFC0FFC0FFC0FFC0;
+        }
+        sts = pAllocator->Unlock(pAllocator->pthis,shiftedSurface.Data.MemId,&shiftedSurface.Data);
+        MSDK_CHECK_STATUS(sts, "pAllocator->Unlock of shiftedSurface failed");
+        sts = pAllocator->Unlock(pAllocator->pthis,pSurface->Data.MemId,&pSurface->Data);
+        MSDK_CHECK_STATUS(sts, "pAllocator->Unlock of pSurface failed");
+
+        sts = m_hwdev->RenderFrame(&shiftedSurface, pmfxAlloc);
+    }
+    else
+    {
+        sts = m_hwdev->RenderFrame(pSurface, pmfxAlloc);
+    }
     MSDK_CHECK_STATUS(sts, "m_hwdev->RenderFrame failed");
 
     return sts;
@@ -289,6 +337,26 @@ VOID CDecodeD3DRender::ChangeWindowSize(bool bFullScreen)
         SetWindowPos(m_Hwnd, HWND_NOTOPMOST,mi.rcMonitor.left , mi.rcMonitor.top,
             abs(mi.rcMonitor.left - mi.rcMonitor.right), abs(mi.rcMonitor.top - mi.rcMonitor.bottom), SWP_SHOWWINDOW);
     }
+}
+
+mfxStatus CDecodeD3DRender::AllocateShiftedSurfaceIfNeeded(const mfxFrameSurface1* refSurface,mfxFrameAllocator* allocator)
+{
+    if(!pAllocator)
+    {
+        mfxFrameAllocRequest request={};
+        request.AllocId = 0xF000; // Unique alloc ID
+        request.NumFrameMin=request.NumFrameSuggested=1;
+        request.Info = refSurface->Info;
+        request.Type = MFX_MEMTYPE_EXTERNAL_FRAME | MFX_MEMTYPE_FROM_DECODE | MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET;
+
+        pAllocator = allocator;
+        mfxStatus sts = allocator->Alloc(allocator->pthis, &request, &shiftSurfaceResponse);
+        MSDK_CHECK_STATUS(sts, "Renderer: Shifted Surface allocation failed");
+
+        shiftedSurface.Data.MemId=shiftSurfaceResponse.mids[0];
+        shiftedSurface.Info = request.Info;
+    }
+    return MFX_ERR_NONE;
 }
 
 #endif // #if defined(_WIN32) || defined(_WIN64)

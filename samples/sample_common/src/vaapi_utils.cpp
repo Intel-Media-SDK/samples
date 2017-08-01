@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2015, Intel Corporation
+Copyright (c) 2005-2017, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -126,6 +126,7 @@ DrmIntel_Proxy::DrmIntel_Proxy()
     , SIMPLE_LOADER_FUNCTION(drm_intel_bo_gem_create_from_prime)
     , SIMPLE_LOADER_FUNCTION(drm_intel_bo_unreference)
     , SIMPLE_LOADER_FUNCTION(drm_intel_bufmgr_gem_init)
+    , SIMPLE_LOADER_FUNCTION(drm_intel_bufmgr_destroy)
 #if defined(X11_DRI3_SUPPORT)
     , SIMPLE_LOADER_FUNCTION(drm_intel_bo_gem_export_to_prime)
 #endif
@@ -228,28 +229,6 @@ XLib_Proxy::~XLib_Proxy()
 
 
 #endif
-
-#if defined (ENABLE_MONDELLO_SUPPORT)
-LibCamhalProxy::LibCamhalProxy()
-    :lib("libcamhal.so")
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera15camera_hal_initEv)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera17camera_hal_deinitEv)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera18camera_device_openEii)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera19camera_device_closeEi)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera19camera_device_startEi)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera18camera_device_stopEi)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera21get_number_of_camerasEv)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera15get_camera_infoEiRNS_13camera_info_tE)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera28camera_device_config_streamsEiPNS_15stream_config_tE)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera18camera_stream_qbufEiiPNS_15camera_buffer_tEiPKNS_10ParametersE)
-    , SIMPLE_LOADER_FUNCTION(_ZN7icamera19camera_stream_dqbufEiiPPNS_15camera_buffer_tEPNS_10ParametersE)
-{
-}
-
-LibCamhalProxy::~LibCamhalProxy()
-{}
-#endif
-
 
 #undef SIMPLE_LOADER_FUNCTION
 

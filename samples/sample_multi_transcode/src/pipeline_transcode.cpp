@@ -1051,7 +1051,7 @@ mfxStatus CTranscodingPipeline::Decode()
             break;
         }
 
-        msdk_tick nFrameTime = msdk_time_get_tick() - nBeginTime;
+        msdk_tick nFrameTime = (msdk_time_get_tick() - nBeginTime) * 1000000 / msdk_time_get_frequency();
         if (nFrameTime < m_nReqFrameTime)
         {
             MSDK_USLEEP((mfxU32)(m_nReqFrameTime - nFrameTime));
@@ -1348,7 +1348,7 @@ mfxStatus CTranscodingPipeline::Encode()
             break;
         }
 
-        msdk_tick nFrameTime = msdk_time_get_tick() - nBeginTime;
+        msdk_tick nFrameTime = (msdk_time_get_tick() - nBeginTime) * 1000000 / msdk_time_get_frequency();
         if (nFrameTime < m_nReqFrameTime)
         {
             MSDK_USLEEP((mfxU32)(m_nReqFrameTime - nFrameTime));
@@ -1650,7 +1650,7 @@ mfxStatus CTranscodingPipeline::Transcode()
             MSDK_CHECK_STATUS(sts, "PutBS failed");
         }
 
-        msdk_tick nFrameTime = msdk_time_get_tick() - nBeginTime;
+        msdk_tick nFrameTime = (msdk_time_get_tick() - nBeginTime) * 1000000 / msdk_time_get_frequency();
         if (nFrameTime < m_nReqFrameTime)
         {
             MSDK_USLEEP((mfxU32)(m_nReqFrameTime - nFrameTime));

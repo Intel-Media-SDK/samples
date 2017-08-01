@@ -1773,6 +1773,11 @@ mfxStatus CmdProcessor::VerifyAndCorrectInputParams(TranscodingSample::sInputPar
         return MFX_ERR_UNSUPPORTED;
     }
 
+    if(InputParams.EncodeId == MFX_FOURCC_DUMP && InputParams.bUseOpaqueMemory)
+    {
+        InputParams.bUseOpaqueMemory = false;
+    }
+
     return MFX_ERR_NONE;
 } //mfxStatus CmdProcessor::VerifyAndCorrectInputParams(TranscodingSample::sInputParams &InputParams)
 

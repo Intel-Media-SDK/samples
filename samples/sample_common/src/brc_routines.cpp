@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -22,6 +22,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "math.h"
 #include "mfxdefs.h"
 #include <algorithm>
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
 
 #if (MFX_VERSION >= 1024)
 #define Saturate(min_val, max_val, val) IPP_MAX((min_val), IPP_MIN((max_val), (val)))
@@ -995,4 +999,5 @@ mfxStatus ExtBRC::Reset(mfxVideoParam *par )
     }
     return sts;
 }
+
 #endif

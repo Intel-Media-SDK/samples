@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -35,6 +35,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "mfxvp8.h"
 #include "mfxmvc.h"
 #include "mfxla.h"
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
 
 #define START_PROC_ARRAY(arrName) for(unsigned int arrIdx=0;arrIdx<(sizeof(info.arrName)/sizeof(info.arrName[0]));arrIdx++){
 #define START_PROC_ARRAY_SIZE(arrName,numElems) for(unsigned int arrIdx=0;arrIdx<info.numElems;arrIdx++){
@@ -350,6 +354,7 @@ void CParametersDumper::SerializeExtensionBuffer(msdk_ostream& sstr,msdk_string 
             SERIALIZE_INFO(GPB);
             SERIALIZE_INFO(MaxFrameSizeI);
             SERIALIZE_INFO(MaxFrameSizeP);
+            //SERIALIZE_INFO_ARRAY(reserved1);
             SERIALIZE_INFO(EnableQPOffset);
             SERIALIZE_INFO_ARRAY(QPOffset);
             SERIALIZE_INFO_ARRAY(NumRefActiveP);
@@ -646,9 +651,9 @@ void CParametersDumper::SerializeExtensionBuffer(msdk_ostream& sstr,msdk_string 
         {
             mfxExtEncoderROI& info = *(mfxExtEncoderROI*)pExtBuffer;
             SERIALIZE_INFO(NumROI);
-
+#if MFX_VERSION >= 1022
             SERIALIZE_INFO(ROIMode);
-
+#endif //MFX_VERSION >= 1022
             SERIALIZE_INFO_ARRAY(reserved1);
             START_PROC_ARRAY_SIZE(ROI,NumROI)
                 SERIALIZE_INFO_ELEMENT(ROI,Left);
@@ -656,8 +661,9 @@ void CParametersDumper::SerializeExtensionBuffer(msdk_ostream& sstr,msdk_string 
                 SERIALIZE_INFO_ELEMENT(ROI,Right);
                 SERIALIZE_INFO_ELEMENT(ROI,Bottom);
                 SERIALIZE_INFO_ELEMENT(ROI,Priority);
-
+#if MFX_VERSION >= 1022
                 SERIALIZE_INFO_ELEMENT(ROI,DeltaQP);
+#endif //MFX_VERSION >= 1022
 
                 SERIALIZE_INFO_ARRAY_ELEMENT(ROI,reserved2);
             END_PROC_ARRAY
@@ -701,7 +707,7 @@ void CParametersDumper::SerializeExtensionBuffer(msdk_ostream& sstr,msdk_string 
             SERIALIZE_INFO_ARRAY(reserved);
         }
         break;
-
+#if MFX_VERSION >= 1022
     case MFX_EXTBUFF_DEC_VIDEO_PROCESSING:
         {
             mfxExtDecVideoProcessing& info = *(mfxExtDecVideoProcessing*)pExtBuffer;
@@ -721,7 +727,7 @@ void CParametersDumper::SerializeExtensionBuffer(msdk_ostream& sstr,msdk_string 
             SERIALIZE_INFO_ARRAY(Out.reserved);
         }
         break;
-
+#endif //MFX_VERSION >= 1022
     case MFX_EXTBUFF_CHROMA_LOC_INFO:
         {
             mfxExtChromaLocInfo& info = *(mfxExtChromaLocInfo*)pExtBuffer;

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -26,6 +26,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #if defined(LIBVA_WAYLAND_SUPPORT)
 #include "class_wayland.h"
+#endif
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
 #endif
 
 using namespace std;
@@ -231,6 +235,7 @@ mfxStatus Launcher::Init(int argc, msdk_char *argv[])
     // create sessions, allocators
     for (i = 0; i < m_InputParamsArray.size(); i++)
     {
+        msdk_printf(MSDK_STRING("Session %d:\n"), i);
         GeneralAllocator* pAllocator = new GeneralAllocator;
         sts = pAllocator->Init(m_pAllocParam.get());
         MSDK_CHECK_STATUS(sts, "pAllocator->Init failed");
@@ -485,6 +490,7 @@ void Launcher::DoTranscoding()
             }
         }
     }
+    m_HDLArray.clear();
 }
 
 void Launcher::DoRobustTranscoding()
@@ -654,15 +660,6 @@ mfxStatus Launcher::VerifyCrossSessionsOptions()
             ((m_InputParamsArray[i].eMode == Source) || (m_InputParamsArray[i].eMode == Sink)))
         {
             areAllInterSessionsOpaque = false;
-        }
-
-        // All sessions should know about whether OpenCL is presented
-        if (m_InputParamsArray[i].bOpenCL)
-        {
-            for (mfxU32 j = 0; j < m_InputParamsArray.size(); j++)
-            {
-                m_InputParamsArray[j].bOpenCL = true;
-            }
         }
 
         // Any plugin or static frame alpha blending

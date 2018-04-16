@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -36,7 +36,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "sample_defs.h"
 #include "sample_utils.h"
-#include "sample_params.h"
 #include "base_allocator.h"
 #include "sysmem_allocator.h"
 #include "rotate_plugin_api.h"
@@ -52,6 +51,8 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "hw_device.h"
 #include "plugin_loader.h"
 #include "sample_defs.h"
+#include "plugin_utils.h"
+#include "preset_manager.h"
 
 #if (MFX_VERSION >= 1024)
 #include "brc_routines.h"
@@ -75,6 +76,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #endif
 
 #define MAX_PREF_LEN    256
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
 
 namespace TranscodingSample
 {
@@ -132,6 +137,7 @@ namespace TranscodingSample
         msdk_char  strSrcFile[MSDK_MAX_FILENAME_LEN]; // source bitstream file
         msdk_char  strDstFile[MSDK_MAX_FILENAME_LEN]; // destination bitstream file
         msdk_char  strDumpVppCompFile[MSDK_MAX_FILENAME_LEN]; // VPP composition output dump file
+        msdk_char  strMfxParamsDumpFile[MSDK_MAX_FILENAME_LEN];
 
         // specific encode parameters
         mfxU16 nTargetUsage;
@@ -233,11 +239,23 @@ namespace TranscodingSample
         bool shouldUseGreedyFormula;
         bool enableQSVFF;
 
-        mfxU16 nExtBRC;
+        ExtBRCType nExtBRC;
 
+        mfxU16 nAdaptiveMaxFrameSize;
+        mfxU16 LowDelayBRC;
+
+        mfxU16 IntRefType;
+        mfxU16 IntRefCycleSize;
+        mfxU16 IntRefQPDelta;
+        mfxU16 IntRefCycleDist;
+
+        mfxU32 nMaxFrameSize;
+
+#if (MFX_VERSION >= 1025)
         mfxU16 numMFEFrames;
         mfxU16 MFMode;
         mfxU32 mfeTimeout;
+#endif
 
 #if defined(LIBVA_WAYLAND_SUPPORT)
         mfxU16 nRenderWinX;
@@ -250,15 +268,20 @@ namespace TranscodingSample
 #endif // defined(MFX_LIBVA_SUPPORT)
 
         CHWDevice             *m_hwdev;
+
+        EPresetModes PresetMode;
+        bool shouldPrintPresets;
     };
 
     struct sInputParams: public __sInputParams
     {
         msdk_string DumpLogFileName;
+#if MFX_VERSION >= 1022
         std::vector<mfxExtEncoderROI> m_ROIData;
 
         bool bDecoderPostProcessing;
         bool bROIasQPMAP;
+#endif //MFX_VERSION >= 1022
         sInputParams();
         void Reset();
     };
@@ -432,6 +455,15 @@ namespace TranscodingSample
             }
             return;
         }
+        void FlushAll()
+        {
+            for (mfxU32 i = 0; i < m_pExtBS.size(); i++)
+            {
+                m_pExtBS[i].Bitstream.DataLength = 0;
+                m_pExtBS[i].Bitstream.DataOffset = 0;
+            }
+            return;
+        }
     protected:
         std::vector<ExtendedBS> m_pExtBS;
 
@@ -555,6 +587,8 @@ namespace TranscodingSample
 
         mfxExtMVCSeqDesc GetDecMVCSeqDesc() const {return m_MVCSeqDesc;}
 
+        static void ModifyParamsUsingPresets(sInputParams& params, mfxF64 fps, mfxU32 width, mfxU32 height);
+
         // alloc frames for all component
         mfxStatus AllocFrames(mfxFrameAllocRequest  *pRequest, bool isDecAlloc);
         mfxStatus AllocFrames();
@@ -582,6 +616,8 @@ namespace TranscodingSample
         mfxStatus InitPluginMfxParams(sInputParams *pInParams);
         mfxStatus InitPreEncMfxParams(sInputParams *pInParams);
 
+        void FillFrameInfoForEncoding(mfxFrameInfo& info, sInputParams *pInParams);
+
         mfxStatus AllocAndInitVppDoNotUse(sInputParams *pInParams);
         mfxStatus AllocMVCSeqDesc();
         mfxStatus InitOpaqueAllocBuffers();
@@ -595,6 +631,7 @@ namespace TranscodingSample
         mfxStatus DumpSurface2File(mfxFrameSurface1* pSurface);
         mfxStatus Surface2BS(ExtendedSurface* pSurf,mfxBitstream* pBS, mfxU32 fourCC);
         mfxStatus NV12toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
+        mfxStatus NV12asI420toBS(mfxFrameSurface1* pSurface, mfxBitstream* pBS);
         mfxStatus RGB4toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
         mfxStatus YUY2toBS(mfxFrameSurface1* pSurface,mfxBitstream* pBS);
 
@@ -634,6 +671,7 @@ namespace TranscodingSample
         bool                            m_bIsInterOrJoined;
 
         mfxU32                          m_numEncoders;
+        mfxU32                          m_encoderFourCC;
 
         CSmplYUVWriter                  m_dumpVppCompFileWriter;
         mfxU32                          m_vppCompDumpRenderMode;
@@ -685,8 +723,9 @@ namespace TranscodingSample
         bool m_bOwnMVCSeqDescMemory; // true if the pipeline owns memory allocated for MVCSeqDesc structure fields
 
         mfxExtVPPComposite       m_VppCompParams;
-
+#if MFX_VERSION >= 1022
         mfxExtDecVideoProcessing m_decPostProcessing;
+#endif //MFX_VERSION >= 1022
 
         mfxExtLAControl          m_ExtLAControl;
         // for setting MaxSliceSize
@@ -696,6 +735,7 @@ namespace TranscodingSample
 
         // HEVC
         mfxExtHEVCParam          m_ExtHEVCParam;
+
 #if (MFX_VERSION >= 1024)
         mfxExtBRC                m_ExtBRC;
 #endif
@@ -706,6 +746,7 @@ namespace TranscodingSample
         // here we pass general timeout per session.
         mfxExtMultiFrameControl  m_ExtMFEControl;
 #endif
+
         // for opaque memory
         mfxExtOpaqueSurfaceAlloc m_EncOpaqueAlloc;
         mfxExtOpaqueSurfaceAlloc m_VppOpaqueAlloc;
@@ -766,6 +807,7 @@ namespace TranscodingSample
 
         bool shouldUseGreedyFormula;
 
+#if MFX_VERSION >= 1022
         // ROI data
         std::vector<mfxExtEncoderROI> m_ROIData;
         mfxU32         m_nSubmittedFramesNum;
@@ -787,7 +829,10 @@ namespace TranscodingSample
         msdk_string       m_sGenericPluginPath;
         mfxU16            m_nRotationAngle;
 
+        msdk_string       m_strMfxParamsDumpFile;
+
         void FillMBQPBuffer(mfxExtMBQP &qpMap, mfxU16 pictStruct);
+#endif //MFX_VERSION >= 1022
     private:
         DISALLOW_COPY_AND_ASSIGN(CTranscodingPipeline);
 

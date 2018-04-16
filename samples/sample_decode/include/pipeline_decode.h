@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -35,7 +35,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <memory>
 
 #include "sample_utils.h"
-#include "sample_params.h"
 #include "base_allocator.h"
 
 #include "mfxmvc.h"
@@ -49,6 +48,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "plugin_loader.h"
 #include "general_allocator.h"
 
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
+
 enum MemType {
     SYSTEM_MEMORY = 0x00,
     D3D9_MEMORY   = 0x01,
@@ -61,10 +64,12 @@ enum eWorkMode {
   MODE_FILE_DUMP
 };
 
+#if MFX_VERSION >= 1022
 enum eDecoderPostProc {
   MODE_DECODER_POSTPROC_AUTO  = 0x1,
   MODE_DECODER_POSTPROC_FORCE = 0x2
 };
+#endif //MFX_VERSION >= 1022
 
 struct sInputParams
 {
@@ -82,7 +87,9 @@ struct sInputParams
     mfxU32  nWallH; //number of windows located in each column
     mfxU32  nWallMonitor; //monitor id, 0,1,.. etc
     bool    bWallNoTitle; //whether to show title for each window with fps value
+#if MFX_VERSION >= 1022
     mfxU16  nDecoderPostProcessing;
+#endif //MFX_VERSION >= 1022
 
     mfxU32  numViews; // number of views for Multi-View Codec
     mfxU32  nRotation; // rotation for Motion JPEG Codec
@@ -106,7 +113,9 @@ struct sInputParams
     bool    bRenderWin;
     mfxU32  nRenderWinX;
     mfxU32  nRenderWinY;
+#if (MFX_VERSION >= 1025)
     bool    bErrorReport;
+#endif
 
     mfxI32  monitorType;
 #if defined(LIBVA_SUPPORT)
@@ -185,6 +194,13 @@ public:
 
             if (pDecodeErrorReport->ErrorTypes & MFX_ERROR_PPS)
                 msdk_printf(MSDK_STRING("[Error] PPS Error detected!\n"));
+
+            if (pDecodeErrorReport->ErrorTypes & MFX_ERROR_SLICEHEADER)
+                msdk_printf(MSDK_STRING("[Error] SliceHeader Error detected!\n"));
+
+            if (pDecodeErrorReport->ErrorTypes & MFX_ERROR_FRAME_GAP)
+                msdk_printf(MSDK_STRING("[Error] Frame Gap Error detected!\n"));
+
         }
     }
 #endif
@@ -244,10 +260,14 @@ protected: // variables
     std::auto_ptr<MFXPlugin> m_pPlugin;
     std::vector<mfxExtBuffer *> m_ExtBuffers;
     std::vector<mfxExtBuffer *> m_ExtBuffersMfxBS;
+#if MFX_VERSION >= 1022
     mfxExtDecVideoProcessing m_DecoderPostProcessing;
+#endif //MFX_VERSION >= 1022
+
 #if (MFX_VERSION >= 1025)
     mfxExtDecodeErrorReport m_DecodeErrorReport;
 #endif
+
     GeneralAllocator*       m_pGeneralAllocator;
     mfxAllocatorParams*     m_pmfxAllocatorParams;
     MemType                 m_memType;      // memory type of surfaces to use

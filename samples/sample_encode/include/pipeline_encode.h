@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -28,7 +28,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #endif
 
 #include "sample_utils.h"
-#include "sample_params.h"
 #include "base_allocator.h"
 #include "time_statistics.h"
 
@@ -43,12 +42,18 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "plugin_loader.h"
 
+#include "preset_manager.h"
+
 #if defined (ENABLE_V4L2_SUPPORT)
 #include "v4l2_util.h"
 #endif
 
 #if (MFX_VERSION >= 1024)
 #include "brc_routines.h"
+#endif
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
 #endif
 
 msdk_tick time_get_tick(void);
@@ -85,6 +90,9 @@ struct sInputParams
     mfxU16 nBRefType;
     mfxU16 nPRefType;
     mfxU16 nIdrInterval;
+    mfxU16 nNumRefActiveP;
+    mfxU16 nNumRefActiveBL0;
+    mfxU16 nNumRefActiveBL1;
     mfxU16 reserved[4];
 
     mfxU16 nQuality; // quality parameter for JPEG encoder
@@ -117,7 +125,10 @@ struct sInputParams
     mfxU16 nQPB;
 
     mfxU16 nGPB;
-    mfxU16 nExtBRC;
+
+    ExtBRCType nExtBRC;
+
+    mfxU16 nAdaptiveMaxFrameSize;
 
     mfxU16 WeightedPred;
     mfxU16 WeightedBiPred;
@@ -142,6 +153,7 @@ struct sInputParams
     mfxU16 GopOptFlag;
     mfxU32 nMaxFrameSize;
 
+    mfxU16 QVBRQuality;
     mfxU16 LowDelayBRC;
 
     mfxU16 IntRefType;
@@ -153,10 +165,11 @@ struct sInputParams
     bool shouldUseShiftedP010Enc;
     bool shouldUseShiftedP010VPP;
 
-    bool bOpenCL;
-
     msdk_char DumpFileName[MSDK_MAX_FILENAME_LEN];
     msdk_char uSEI[MSDK_MAX_USER_DATA_UNREG_SEI_LEN];
+
+    EPresetModes PresetMode;
+    bool shouldPrintPresets;
 
 #if defined (ENABLE_V4L2_SUPPORT)
     msdk_char DeviceName[MSDK_MAX_FILENAME_LEN];
@@ -284,6 +297,7 @@ protected:
 #if (MFX_VERSION >= 1024)
     mfxExtBRC           m_ExtBRC;
 #endif
+
     // external parameters for each component are stored in a vector
     std::vector<mfxExtBuffer*> m_VppExtParams;
     std::vector<mfxExtBuffer*> m_EncExtParams;

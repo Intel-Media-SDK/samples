@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -18,6 +18,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 \**********************************************************************************/
 
 #include "sample_vpp_utils.h"
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
 
 mfxStatus ConfigVideoEnhancementFilters( sInputParams* pParams, sAppResources* pResources, mfxU32 paramID )
 {
@@ -151,7 +155,7 @@ mfxStatus ConfigVideoEnhancementFilters( sInputParams* pParams, sAppResources* p
 
         pVppParam->ExtParam[pVppParam->NumExtParam++] = (mfxExtBuffer*)&(pResources->scalingConfig);
     }
-#ifdef ENABLE_FF
+#if MFX_VERSION >= 1025
     if (pParams->bChromaSiting)
     {
         pResources->chromaSitingConfig.Header.BufferId = MFX_EXTBUFF_VPP_COLOR_CONVERSION;

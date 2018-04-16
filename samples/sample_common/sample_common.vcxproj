@@ -261,8 +261,8 @@
     <ClInclude Include="include\parameters_dumper.h" />
     <ClInclude Include="include\plugin_loader.h" />
     <ClInclude Include="include\plugin_utils.h" />
+    <ClInclude Include="include\preset_manager.h" />
     <ClInclude Include="include\sample_defs.h" />
-    <ClInclude Include="include\sample_params.h" />
     <ClInclude Include="include\sample_types.h" />
     <ClInclude Include="include\sample_utils.h" />
     <ClInclude Include="include\surface_auto_lock.h" />
@@ -292,6 +292,7 @@
     <ClCompile Include="src\mfx_buffering.cpp" />
     <ClCompile Include="src\parameters_dumper.cpp" />
     <ClCompile Include="src\plugin_utils.cpp" />
+    <ClCompile Include="src\preset_manager.cpp" />
     <ClCompile Include="src\sample_utils.cpp" />
     <ClCompile Include="src\sysmem_allocator.cpp" />
     <ClCompile Include="src\vpp_ex.cpp" />

@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -44,6 +44,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #endif
 
 #include "version.h"
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
 
 /* obtain the clock tick of an uninterrupted master clock */
 msdk_tick time_get_tick(void)
@@ -443,13 +447,6 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
     m_mfxEncParams.mfx.FrameInfo.CropW = pInParams->nDstWidth;
     m_mfxEncParams.mfx.FrameInfo.CropH = pInParams->nDstHeight;
 
-    // OpenCL demands align to 32 bit surfaces
-    if (pInParams->bOpenCL)
-    {
-        m_mfxEncParams.vpp.In.Width = MSDK_ALIGN32(m_mfxEncParams.vpp.In.CropW);
-        m_mfxEncParams.vpp.In.Height = MSDK_ALIGN32(m_mfxEncParams.vpp.In.CropH);
-    }
-
     bool bCodingOption = false;
     if(*pInParams->uSEI && (pInParams->CodecId == MFX_CODEC_AVC ||
                 pInParams->CodecId == MFX_CODEC_HEVC))
@@ -546,14 +543,25 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
         m_CodingOption2.MaxSliceSize   = pInParams->nMaxSliceSize;
         m_CodingOption2.MaxFrameSize = pInParams->nMaxFrameSize;
         m_CodingOption2.BRefType = pInParams->nBRefType;
-        m_CodingOption2.ExtBRC = (pInParams->CodecId == MFX_CODEC_HEVC || pInParams->CodecId == MFX_CODEC_AVC)? pInParams->nExtBRC : 0;
+
+        if (pInParams->nExtBRC != EXTBRC_DEFAULT && (pInParams->CodecId == MFX_CODEC_HEVC || pInParams->CodecId == MFX_CODEC_AVC))
+        {
+            m_CodingOption2.ExtBRC = (mfxU16)(pInParams->nExtBRC == EXTBRC_OFF ? MFX_CODINGOPTION_OFF : MFX_CODINGOPTION_ON);
+        }
+        else
+        {
+            m_CodingOption2.ExtBRC = 0;
+        }
+
         m_CodingOption2.IntRefType = pInParams->IntRefType;
         m_CodingOption2.IntRefCycleSize = pInParams->IntRefCycleSize;
         m_CodingOption2.IntRefQPDelta = pInParams->IntRefQPDelta;
         m_EncExtParams.push_back((mfxExtBuffer *)&m_CodingOption2);
     }
+
 #if (MFX_VERSION >= 1024)
-    if (pInParams->nExtBRC == MFX_CODINGOPTION_ON && (pInParams->CodecId == MFX_CODEC_HEVC || pInParams->CodecId == MFX_CODEC_AVC))
+    // This is for explicit extbrc only. In case of implicit (built-into-library) version - we don't need this extended buffer
+    if (pInParams->nExtBRC == EXTBRC_ON && (pInParams->CodecId == MFX_CODEC_HEVC || pInParams->CodecId == MFX_CODEC_AVC))
     {
        HEVCExtBRC::Create(m_ExtBRC);
        m_EncExtParams.push_back((mfxExtBuffer *)&m_ExtBRC);
@@ -561,13 +569,16 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
 #endif
 
     // set up mfxCodingOption3
-    if (pInParams->nGPB || pInParams->LowDelayBRC ||
-        pInParams->WeightedPred || pInParams->WeightedBiPred
-        || pInParams->nPRefType || pInParams->IntRefCycleDist )
+    if (pInParams->nGPB || pInParams->LowDelayBRC || pInParams->WeightedPred || pInParams->WeightedBiPred
+        || pInParams->nPRefType || pInParams->IntRefCycleDist || pInParams->nAdaptiveMaxFrameSize
+        || pInParams->nNumRefActiveP || pInParams->nNumRefActiveBL0 || pInParams->nNumRefActiveBL1 || pInParams->QVBRQuality)
     {
         if (pInParams->CodecId == MFX_CODEC_HEVC)
         {
             m_CodingOption3.GPB = pInParams->nGPB;
+            std::fill(m_CodingOption3.NumRefActiveP,   m_CodingOption3.NumRefActiveP + 8,   pInParams->nNumRefActiveP);
+            std::fill(m_CodingOption3.NumRefActiveBL0, m_CodingOption3.NumRefActiveBL0 + 8, pInParams->nNumRefActiveBL0);
+            std::fill(m_CodingOption3.NumRefActiveBL1, m_CodingOption3.NumRefActiveBL1 + 8, pInParams->nNumRefActiveBL1);
         }
 
         m_CodingOption3.WeightedPred   = pInParams->WeightedPred;
@@ -577,6 +588,8 @@ mfxStatus CEncodingPipeline::InitMfxEncParams(sInputParams *pInParams)
 #endif
         m_CodingOption3.PRefType       = pInParams->nPRefType;
         m_CodingOption3.IntRefCycleDist= pInParams->IntRefCycleDist;
+        m_CodingOption3.AdaptiveMaxFrameSize = pInParams->nAdaptiveMaxFrameSize;
+        m_CodingOption3.QVBRQuality    = pInParams->QVBRQuality;
 
         m_EncExtParams.push_back((mfxExtBuffer *)&m_CodingOption3);
     }
@@ -656,13 +669,6 @@ mfxStatus CEncodingPipeline::InitMfxVppParams(sInputParams *pInParams)
     m_mfxVppParams.vpp.In.CropW = pInParams->nWidth;
     m_mfxVppParams.vpp.In.CropH = pInParams->nHeight;
 
-    // OpenCL demands align to 32 bit surfaces
-    if (pInParams->bOpenCL)
-    {
-        m_mfxVppParams.vpp.In.Width = MSDK_ALIGN32(m_mfxVppParams.vpp.In.CropW);
-        m_mfxVppParams.vpp.In.Height = MSDK_ALIGN32(m_mfxVppParams.vpp.In.CropH);
-    }
-
     // fill output frame info
     MSDK_MEMCPY_VAR(m_mfxVppParams.vpp.Out,&m_mfxVppParams.vpp.In, sizeof(mfxFrameInfo));
 
@@ -704,15 +710,6 @@ mfxStatus CEncodingPipeline::InitMfxVppParams(sInputParams *pInParams)
     m_mfxVppParams.NumExtParam = (mfxU16)m_VppExtParams.size();
 
     m_mfxVppParams.AsyncDepth = pInParams->nAsyncDepth;
-
-    // OpenCL demands align to 32 bit surfaces
-    if (pInParams->bOpenCL)
-    {
-        m_mfxVppParams.vpp.Out.CropW = m_mfxVppParams.vpp.Out.Width;
-        m_mfxVppParams.vpp.Out.CropH = m_mfxVppParams.vpp.Out.Height;
-        m_mfxVppParams.vpp.Out.Width = MSDK_ALIGN32(m_mfxVppParams.vpp.Out.CropW);
-        m_mfxVppParams.vpp.Out.Height = MSDK_ALIGN32(m_mfxVppParams.vpp.Out.CropH);
-    }
 
     return MFX_ERR_NONE;
 }
@@ -1096,6 +1093,7 @@ CEncodingPipeline::CEncodingPipeline()
     MSDK_ZERO_MEMORY(m_VideoSignalInfo);
     m_VideoSignalInfo.Header.BufferId = MFX_EXTBUFF_VIDEO_SIGNAL_INFO;
     m_VideoSignalInfo.Header.BufferSz = sizeof(m_VideoSignalInfo);
+
 #if (MFX_VERSION >= 1024)
     MSDK_ZERO_MEMORY(m_ExtBRC);
     m_ExtBRC.Header.BufferId = MFX_EXTBUFF_BRC;
@@ -1514,9 +1512,12 @@ void CEncodingPipeline::Close()
 
     MSDK_SAFE_DELETE(m_pmfxENC);
     MSDK_SAFE_DELETE(m_pmfxVPP);
+
 #if (MFX_VERSION >= 1024)
     HEVCExtBRC::Destroy(m_ExtBRC);
 #endif
+
+
     FreeMVCSeqDesc();
     FreeVppDoNotUse();
 
@@ -2086,7 +2087,8 @@ mfxStatus CEncodingPipeline::LoadNextFrame(mfxFrameSurface1* pSurf)
             return sts;
         }
     }
-
+    // frameorder required for reflist, dbp, and decrefpicmarking operations
+    if (pSurf) pSurf->Data.FrameOrder = m_nFramesRead;
     m_nFramesRead++;
 
     return sts;

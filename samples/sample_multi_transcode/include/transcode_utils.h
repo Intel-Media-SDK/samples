@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -42,6 +42,10 @@ struct D3DAllocatorParams;
 #define MOD_SMT_CREATE_PIPELINE
 #define MOD_SMT_PRINT_HELP
 #define MOD_SMT_PARSE_INPUT
+#endif
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
 #endif
 
 namespace TranscodingSample
@@ -107,13 +111,14 @@ namespace TranscodingSample
         mfxStatus ParseParFile(FILE* file);
         mfxStatus TokenizeLine(msdk_char *pLine, mfxU32 length);
 
+#if MFX_VERSION >= 1022
         static bool isspace(char a);
         static bool is_not_allowed_char(char a);
         bool ParseROIFile(msdk_char const *roi_file_name, std::vector<mfxExtEncoderROI>& m_ROIData);
+#endif //MFX_VERSION >= 1022
 
         mfxStatus ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[]);
         mfxStatus ParseOption__set(msdk_char* strCodecType, msdk_char* strPluginPath);
-        sPluginParams ParsePluginParameter(msdk_char* strPluginPath);
         mfxStatus VerifyAndCorrectInputParams(TranscodingSample::sInputParams &InputParams);
         mfxU32                                       m_SessionParamId;
         std::vector<TranscodingSample::sInputParams> m_SessionArray;

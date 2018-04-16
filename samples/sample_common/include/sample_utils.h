@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -95,6 +95,13 @@ enum
     MFX_FOURCC_YUV444       = MFX_MAKEFOURCC('4','4','4','P'),
     MFX_FOURCC_RGBP         = MFX_MAKEFOURCC('R','G','B','P'),
     MFX_FOURCC_I420         = MFX_MAKEFOURCC('I','4','2','0')
+};
+
+enum ExtBRCType {
+    EXTBRC_DEFAULT,
+    EXTBRC_OFF,
+    EXTBRC_ON,
+    EXTBRC_IMPLICIT
 };
 
 bool IsDecodeCodecSupported(mfxU32 codecFormat);

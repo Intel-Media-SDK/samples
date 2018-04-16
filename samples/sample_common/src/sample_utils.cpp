@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -1336,6 +1336,15 @@ mfxU16 CalculateDefaultBitrate(mfxU32 nCodecId, mfxU32 nTargetUsage, mfxU32 nWid
 
     switch (nCodecId)
     {
+    case MFX_CODEC_HEVC :
+    {
+        fnc.AddPair(0, 0);
+        fnc.AddPair(25344, 225/1.3);
+        fnc.AddPair(101376, 1000/1.3);
+        fnc.AddPair(414720, 4000/1.3);
+        fnc.AddPair(2058240, 5000/1.3);
+        break;
+    }
     case MFX_CODEC_AVC :
         {
             fnc.AddPair(0, 0);
@@ -2338,9 +2347,6 @@ mfxU16 FourCCToChroma(mfxU32 fourCC)
         return MFX_CHROMAFORMAT_YUV420;
     case MFX_FOURCC_NV16:
     case MFX_FOURCC_P210:
-#ifdef ENABLE_PS
-    case MFX_FOURCC_Y210:
-#endif
     case MFX_FOURCC_YUY2:
         return MFX_CHROMAFORMAT_YUV422;
     case MFX_FOURCC_RGB4:

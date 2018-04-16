@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2017, Intel Corporation
+Copyright (c) 2005-2018, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -22,6 +22,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "pipeline_decode.h"
 #include <sstream>
 #include "version.h"
+
+#ifndef MFX_VERSION
+#error MFX_VERSION not defined
+#endif
 
 void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
 {
@@ -49,7 +53,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-?]                      - print help\n"));
     msdk_printf(MSDK_STRING("   [-hw]                     - use platform specific SDK implementation (default)\n"));
     msdk_printf(MSDK_STRING("   [-sw]                     - use software implementation, if not specified platform specific SDK implementation is used\n"));
-    msdk_printf(MSDK_STRING("   [-p guid]                 - 32-character hexadecimal guid string\n"));
+    msdk_printf(MSDK_STRING("   [-p plugin]               - decoder plugin. Supported values: hevcd_sw, hevcd_hw, vp8d_hw, vp9d_hw, camera_hw, capture_hw\n"));
     msdk_printf(MSDK_STRING("   [-path path]              - path to plugin (valid only in pair with -p option)\n"));
     msdk_printf(MSDK_STRING("                               (optional for Media SDK in-box plugins, required for user-decoder ones)\n"));
     msdk_printf(MSDK_STRING("   [-f]                      - rendering framerate\n"));
@@ -103,12 +107,14 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-async]                  - depth of asynchronous pipeline. default value is 4. must be between 1 and 20\n"));
     msdk_printf(MSDK_STRING("   [-gpucopy::<on,off>] Enable or disable GPU copy mode\n"));
     msdk_printf(MSDK_STRING("   [-timeout]                - timeout in seconds\n"));
+#if MFX_VERSION >= 1022
     msdk_printf(MSDK_STRING("   [-dec_postproc force/auto] - resize after decoder using direct pipe\n"));
     msdk_printf(MSDK_STRING("                  force: instruct to use decoder-based post processing\n"));
     msdk_printf(MSDK_STRING("                         or fail if the decoded stream is unsupported\n"));
     msdk_printf(MSDK_STRING("                  auto: instruct to use decoder-based post processing for supported streams \n"));
     msdk_printf(MSDK_STRING("                        or perform VPP operation through separate pipeline component for unsupported streams\n"));
 
+#endif //MFX_VERSION >= 1022
 #if !defined(_WIN32) && !defined(_WIN64)
     msdk_printf(MSDK_STRING("   [-threads_num]            - number of mediasdk task threads\n"));
     msdk_printf(MSDK_STRING("   [-threads_schedtype]      - scheduling type of mediasdk task threads\n"));
@@ -403,10 +409,12 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             pParams->gpuCopy = MFX_GPUCOPY_OFF;
         }
 #if !defined(_WIN32) && !defined(_WIN64)
+#if (MFX_VERSION >= 1025)
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-d")))
         {
             pParams->bErrorReport = true;
         }
+#endif
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-threads_num")))
         {
             if(i + 1 >= nArgNum)
@@ -447,6 +455,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             }
         }
 #endif // #if !defined(_WIN32) && !defined(_WIN64)
+#if MFX_VERSION >= 1022
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-dec_postproc")))
         {
             if(i + 1 >= nArgNum)
@@ -474,6 +483,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+#endif //MFX_VERSION >= 1022
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-f")))
         {
             if(i + 1 >= nArgNum)
@@ -562,11 +572,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-path")))
         {
             i++;
-            msdk_char tmpVal[MSDK_MAX_FILENAME_LEN];
-            msdk_opt_read(strInput[i], tmpVal);
-            MSDK_MAKE_BYTE_STRING(tmpVal, pParams->pluginParams.strPluginPath);
-
-            pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_FILE;
+            pParams->pluginParams = ParsePluginPath(strInput[i]);
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-i:null")))
         {
@@ -578,21 +584,13 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             {
             case MSDK_CHAR('p'):
                 if (++i < nArgNum) {
-                   if (MFX_ERR_NONE == ConvertStringToGuid(strInput[i], pParams->pluginParams.pluginGuid))
+                    pParams->pluginParams = ParsePluginGuid(strInput[i]);
+                    if (AreGuidsEqual(pParams->pluginParams.pluginGuid, MSDK_PLUGINGUID_NULL))
                     {
-                        if(pParams->pluginParams.type != MFX_PLUGINLOAD_TYPE_FILE)
-                        {
-                            pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_GUID;
-                        }
-                    }
-                    else
-                    {
-                        PrintHelp(strInput[0], MSDK_STRING("Unknown options"));
+                        msdk_printf(MSDK_STRING("error: invalid decoder plugin\n"));
+                        return MFX_ERR_UNSUPPORTED;
                     }
                  }
-                else {
-                    msdk_printf(MSDK_STRING("error: option '-p' expects an argument\n"));
-                }
                 break;
             case MSDK_CHAR('i'):
                 if (++i < nArgNum) {

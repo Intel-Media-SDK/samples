@@ -108,6 +108,10 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("                Output statistic every N transcoding cycles\n"));
     msdk_printf(MSDK_STRING("  -stat-log <name>\n"));
     msdk_printf(MSDK_STRING("                Output statistic to the specified file (opened in append mode)\n"));
+    msdk_printf(MSDK_STRING("  -stat-per-frame <name>\n"));
+    msdk_printf(MSDK_STRING("                Output per-frame latency values to a file (opened in append mode). The file name will be for an input sesssion: <name>_input_ID_<N>.log\n"));
+    msdk_printf(MSDK_STRING("                or, for output session: <name>_output_ID_<N>.log; <N> - a number of a session.\n"));
+
     msdk_printf(MSDK_STRING("Options:\n"));
     //                     ("  ............xx
     msdk_printf(MSDK_STRING("  -?            Print this help and exit\n"));
@@ -129,15 +133,27 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("                      -hw - platform-specific on default display adapter (default)\n"));
     msdk_printf(MSDK_STRING("                      -hw_d3d11 - platform-specific via d3d11\n"));
     msdk_printf(MSDK_STRING("                      -sw - software\n"));
-#if _MSDK_API >= MSDK_API(1,22)
-    msdk_printf(MSDK_STRING("  -roi_file <roi-file-name>\n"));
-    msdk_printf(MSDK_STRING("                Set Regions of Interest for each frame from <roi-file-name>\n"));
-#endif //_MSDK_API >= MSDK_API(1,22)
+    msdk_printf(MSDK_STRING("  -mfe_frames <N> maximum number of frames to be combined in multi-frame encode pipeline"));
+    msdk_printf(MSDK_STRING("               0 - default for platform will be used\n"));
+    msdk_printf(MSDK_STRING("  -mfe_mode 0|1|2|3 multi-frame encode operation mode - should be the same for all sessions\n"));
+    msdk_printf(MSDK_STRING("            0, MFE operates as DEFAULT mode, decided by SDK if MFE enabled\n"));
+    msdk_printf(MSDK_STRING("            1, MFE is disabled\n"));
+    msdk_printf(MSDK_STRING("            2, MFE operates as AUTO mode\n"));
+    msdk_printf(MSDK_STRING("            3, MFE operates as MANUAL mode\n"));
+
+    msdk_printf(MSDK_STRING("  -mfe_timeout <N> multi-frame encode timeout in milliseconds - set per sessions control\n"));
+    msdk_printf(MSDK_STRING("  -robust       Recover from gpu hang errors as the come\n"));
     msdk_printf(MSDK_STRING("  -async        Depth of asynchronous pipeline. default value 1\n"));
     msdk_printf(MSDK_STRING("  -join         Join session with other session(s), by default sessions are not joined\n"));
     msdk_printf(MSDK_STRING("  -priority     Use priority for join sessions. 0 - Low, 1 - Normal, 2 - High. Normal by default\n"));
     msdk_printf(MSDK_STRING("  -threads num  Number of session internal threads to create\n"));
-    msdk_printf(MSDK_STRING("  -n            Number of frames to transcode \n"));
+    msdk_printf(MSDK_STRING("  -n            Number of frames to transcode\n") \
+        MSDK_STRING("                  (session ends after this number of frames is reached). \n") \
+        MSDK_STRING("                In decoding sessions (-o::sink) this parameter limits number\n") \
+        MSDK_STRING("                   of frames acquired from decoder.\n") \
+        MSDK_STRING("                In encoding sessions (-o::source) and transcoding sessions \n") \
+        MSDK_STRING("                  this parameter limits number of frames sent to encoder.\n"));
+
     msdk_printf(MSDK_STRING("  -ext_allocator    Force usage of external allocators\n"));
     msdk_printf(MSDK_STRING("  -sys          Force usage of external system allocator\n"));
     msdk_printf(MSDK_STRING("  -fps <frames per second>\n"));
@@ -151,6 +167,8 @@ void TranscodingSample::PrintHelp()
     MOD_SMT_PRINT_HELP;
     msdk_printf(MSDK_STRING("  -b <Kbits per second>\n"));
     msdk_printf(MSDK_STRING("                Encoded bit rate, valid for H.264, MPEG2 and MVC encoders\n"));
+    msdk_printf(MSDK_STRING("  -bm           Bitrate multiplier. Use it when required bitrate isn't fit into 16-bit\n"));
+    msdk_printf(MSDK_STRING("                Affects following parameters: InitialDelayInKB, BufferSizeInKB, TargetKbps, MaxKbps\n"));
     msdk_printf(MSDK_STRING("  -f <frames per second>\n"));
     msdk_printf(MSDK_STRING("                Video frame rate for the FRC and deinterlace options\n"));
     msdk_printf(MSDK_STRING("  -fe <frames per second>\n"));
@@ -160,7 +178,8 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -override_encoder_framerate <framerate> \n"));
     msdk_printf(MSDK_STRING("                Overwrites framerate of stream going into encoder input with provided value (this option does not enable FRC, it just ovewrites framerate value)\n"));
 
-    msdk_printf(MSDK_STRING("  -u 1|4|7      Target usage: quality (1), balanced (4) or speed (7); valid for H.264, MPEG2 and MVC encoders. Default is balanced\n"));
+    msdk_printf(MSDK_STRING("  -u <usage>    Target usage. Valid for H.265, H.264, MPEG2 and MVC encoders. Expected values:\n"));
+    msdk_printf(MSDK_STRING("                veryslow(quality), slower, slow, medium(balanced), fast, faster, veryfast(speed)\n"));
     msdk_printf(MSDK_STRING("  -q <quality>  Quality parameter for JPEG encoder; in range [1,100], 100 is the best quality\n"));
     msdk_printf(MSDK_STRING("  -l numSlices  Number of slices for encoder; default value 0 \n"));
     msdk_printf(MSDK_STRING("  -mss maxSliceSize \n"));
@@ -170,30 +189,36 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("                May be 1 in the case when -mss option is specified \n"));
     msdk_printf(MSDK_STRING("  -la_ext       Use external LA plugin (compatible with h264 & hevc encoders)\n"));
     msdk_printf(MSDK_STRING("  -vbr          Variable bitrate control\n"));
-    msdk_printf(MSDK_STRING("  -hrd <KB>     Maximum possible size of any compressed frames \n"));
-    msdk_printf(MSDK_STRING("  -wb <KBps>    Maximum bitrate for sliding window \n"));
+    msdk_printf(MSDK_STRING("  -hrd <KBytes> Maximum possible size of any compressed frames \n"));
+    msdk_printf(MSDK_STRING("  -wb <Kbits per second>\n"));
+    msdk_printf(MSDK_STRING("                Maximum bitrate for sliding window\n"));
     msdk_printf(MSDK_STRING("  -ws           Sliding window size in frames\n"));
     msdk_printf(MSDK_STRING("  -gop_size     Size of GOP structure in frames \n"));
     msdk_printf(MSDK_STRING("  -dist         Distance between I- or P- key frames \n"));
     msdk_printf(MSDK_STRING("  -num_ref      Number of reference frames\n"));
     msdk_printf(MSDK_STRING("  -bref         Arrange B frames in B pyramid reference structure\n"));
+    msdk_printf(MSDK_STRING("  -bpyr         Enable B pyramid\n"));
     msdk_printf(MSDK_STRING("  -CodecProfile          - Specifies codec profile\n"));
     msdk_printf(MSDK_STRING("  -CodecLevel            - Specifies codec level\n"));
     msdk_printf(MSDK_STRING("  -GopOptFlag:closed     - Closed gop\n"));
     msdk_printf(MSDK_STRING("  -GopOptFlag:strict     - Strict gop\n"));
-    msdk_printf(MSDK_STRING("  -InitialDelayInKB      - The decoder starts decoding after the buffer reaches the initial size InitialDelayInKB, \
+    msdk_printf(MSDK_STRING("  -InitialDelayInKB      - The decoder starts decoding after the buffer reaches the initial size InitialDelayInKB, \n\
                             which is equivalent to reaching an initial delay of InitialDelayInKB*8000/TargetKbps ms\n"));
-    msdk_printf(MSDK_STRING("  -MaxKbps              - For variable bitrate control, specifies the maximum bitrate at which \
+    msdk_printf(MSDK_STRING("  -MaxKbps               - For variable bitrate control, specifies the maximum bitrate at which \n\
                             the encoded data enters the Video Buffering Verifier buffer\n"));
-
     msdk_printf(MSDK_STRING("  -gpucopy::<on,off> Enable or disable GPU copy mode\n"));
     msdk_printf(MSDK_STRING("  -repartitioncheck::<on,off> Enable or disable RepartitionCheckEnable mode\n"));
     msdk_printf(MSDK_STRING("  -cqp          Constant quantization parameter (CQP BRC) bitrate control method\n"));
     msdk_printf(MSDK_STRING("                              (by default constant bitrate control method is used), should be used along with -qpi, -qpp, -qpb.\n"));
+
     msdk_printf(MSDK_STRING("  -qpi          Constant quantizer for I frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("  -qpp          Constant quantizer for P frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
     msdk_printf(MSDK_STRING("  -qpb          Constant quantizer for B frames (if bitrace control method is CQP). In range [1,51]. 0 by default, i.e.no limitations on QP.\n"));
+
     msdk_printf(MSDK_STRING("  -qsv-ff       Enable QSV-FF mode\n"));
+    msdk_printf(MSDK_STRING("  -roi_file <roi-file-name>\n"));
+    msdk_printf(MSDK_STRING("                Set Regions of Interest for each frame from <roi-file-name>\n"));
+    msdk_printf(MSDK_STRING("  -roi_qpmap    Use QP map to emulate ROI for CQP mode\n"));
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Pipeline description (vpp options):\n"));
     msdk_printf(MSDK_STRING("  -deinterlace             Forces VPP to deinterlace input stream\n"));
@@ -215,7 +240,11 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -w            Destination picture width, invokes VPP resize\n"));
     msdk_printf(MSDK_STRING("  -h            Destination picture height, invokes VPP resize\n"));
     msdk_printf(MSDK_STRING("  -field_processing t2t|t2b|b2t|b2b|fr2fr - Field Copy feature\n"));
-
+    msdk_printf(MSDK_STRING("  -WeightedPred::default|implicit       Enambles weighted prediction usage\n"));
+    msdk_printf(MSDK_STRING("  -WeightedBiPred::default|implicit     Enambles weighted bi-prediction usage\n"));
+#if (MFX_VERSION >= 1024)
+    msdk_printf(MSDK_STRING("  -extbrc::<on,off>           Enables external BRC for AVC and HEVC encoders"));
+#endif
     msdk_printf(MSDK_STRING("  -vpp_comp <sourcesNum>      Enables composition from several decoding sessions. Result is written to the file\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_only <sourcesNum> Enables composition from several decoding sessions. Result is shown on screen\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_num_tiles <Num>   Quantity of tiles for composition. if equal to 0 tiles processing ignored\n"));
@@ -225,11 +254,10 @@ void TranscodingSample::PrintHelp()
     msdk_printf(MSDK_STRING("  -vpp_comp_dst_w             Width of this stream in composed stream (should be used in decoder session)\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_src_h             Width of this stream in composed stream (should be used in decoder session)\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_src_w             Width of this stream in composed stream (should be used in decoder session)\n"));
+    msdk_printf(MSDK_STRING("  -vpp_comp_tile_id           Tile_id for current channel of composition (should be used in decoder session)\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_dump <file-name>  Dump of VPP Composition's output into file. Valid if with -vpp_comp* options\n"));
     msdk_printf(MSDK_STRING("  -vpp_comp_dump null_render  Disabling rendering after VPP Composition. This is for performance measurements\n"));
-#if _MSDK_API >= MSDK_API(1,22)
     msdk_printf(MSDK_STRING("  -dec_postproc               Resize after decoder using direct pipe (should be used in decoder session)\n"));
-#endif //_MSDK_API >= MSDK_API(1,22)
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("ParFile format:\n"));
     msdk_printf(MSDK_STRING("  ParFile is extension of what can be achieved by setting pipeline in the command\n"));
@@ -325,7 +353,9 @@ CmdProcessor::CmdProcessor()
     m_nTimeout = 0;
     statisticsWindowSize = 0;
     statisticsLogFile = NULL;
+    DumpLogFileName.clear();
     shouldUseGreedyFormula=false;
+    m_bRobust = false;
 
 } //CmdProcessor::CmdProcessor()
 
@@ -394,6 +424,10 @@ mfxStatus CmdProcessor::ParseCmdLine(int argc, msdk_char *argv[])
                 return MFX_ERR_UNSUPPORTED;
             }
         }
+        else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-robust")))
+        {
+            m_bRobust = true;
+        }
         else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-?")) )
         {
             PrintHelp();
@@ -458,6 +492,20 @@ mfxStatus CmdProcessor::ParseCmdLine(int argc, msdk_char *argv[])
                 msdk_printf(MSDK_STRING("error: statistics file \"%s\" not found"), argv[0]);
                 return MFX_ERR_UNSUPPORTED;
             }
+        }
+        else if (0 == msdk_strcmp(argv[0], MSDK_STRING("-stat-per-frame")))
+        {
+            if (!DumpLogFileName.empty()){
+                msdk_printf(MSDK_STRING("error: only one dump file is supported"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            --argc;
+            ++argv;
+            if (!argv[0])
+            {
+                msdk_printf(MSDK_STRING("error: no argument given for 'stat-dump' option\n"));
+            }
+            DumpLogFileName = argv[0];
         }
         else
         {
@@ -603,7 +651,6 @@ mfxStatus CmdProcessor::TokenizeLine(msdk_char *pLine, mfxU32 length)
     return ParseParamsForOneSession(argc, argv);
 }
 
-#if _MSDK_API >= MSDK_API(1,22)
 bool CmdProcessor::isspace(char a) { return (std::isspace(a) != 0); }
 
 bool CmdProcessor::is_not_allowed_char(char a) {
@@ -667,7 +714,9 @@ bool CmdProcessor::ParseROIFile(const msdk_char *roi_file_name, std::vector<mfxE
             mfxExtEncoderROI frame_roi;
             std::memset(&frame_roi, 0, sizeof(frame_roi));
             frame_roi.Header.BufferId = MFX_EXTBUFF_ENCODER_ROI;
+
             frame_roi.ROIMode = MFX_ROI_MODE_QP_DELTA;
+
 
             int roi_num = std::atoi(items[item_ind].c_str());
             if (roi_num < 0 || roi_num > (int)(sizeof(frame_roi.ROI) / sizeof(frame_roi.ROI[0])))
@@ -688,7 +737,9 @@ bool CmdProcessor::ParseROIFile(const msdk_char *roi_file_name, std::vector<mfxE
                 frame_roi.ROI[i].Top = std::atoi(items[item_ind + i * 5 + 2].c_str());
                 frame_roi.ROI[i].Right = std::atoi(items[item_ind + i * 5 + 3].c_str());
                 frame_roi.ROI[i].Bottom = std::atoi(items[item_ind + i * 5 + 4].c_str());
+
                 frame_roi.ROI[i].DeltaQP = (mfxI16) std::atoi(items[item_ind +i * 5 + 5].c_str());
+
             }
             frame_roi.NumROI = (mfxU16) roi_num;
             m_ROIData.push_back(frame_roi);
@@ -700,7 +751,6 @@ bool CmdProcessor::ParseROIFile(const msdk_char *roi_file_name, std::vector<mfxE
     }
     return true;
 }
-#endif //_MSDK_API >= MSDK_API(1,22)
 
 mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
 {
@@ -717,11 +767,16 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
     TranscodingSample::sInputParams InputParams;
     if (m_nTimeout)
         InputParams.nTimeout = m_nTimeout;
+    if (m_bRobust)
+        InputParams.bRobust = true;
 
     InputParams.shouldUseGreedyFormula = shouldUseGreedyFormula;
 
     InputParams.statisticsWindowSize = statisticsWindowSize;
     InputParams.statisticsLogFile = statisticsLogFile;
+
+    //bind to a dump-log-file name
+    InputParams.DumpLogFileName = DumpLogFileName;
 
     if (0 == msdk_strcmp(argv[0], MSDK_STRING("set")))
     {
@@ -807,7 +862,6 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 InputParams.bIsMVC = true;
             }
         }
-#if _MSDK_API >= MSDK_API(1,22)
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-roi_file")))
         {
             VAL_CHECK(i+1 == argc, i, argv[i]);
@@ -822,7 +876,29 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 return MFX_ERR_UNSUPPORTED;
             }
         }
-#endif //_MSDK_API >= MSDK_API(1,22)
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-p")))
+        {
+            if (m_PerfFILE)
+            {
+                msdk_printf(MSDK_STRING("error: only one performance file is supported"));
+                return MFX_ERR_UNSUPPORTED;
+            }
+            --argc;
+            ++argv;
+            if (!argv[i]) {
+                msdk_printf(MSDK_STRING("error: no argument given for '-p' option\n"));
+            }
+            MSDK_FOPEN(m_PerfFILE, argv[i], MSDK_STRING("w"));
+            if (NULL == m_PerfFILE)
+            {
+                msdk_printf(MSDK_STRING("error: performance file \"%s\" not found"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-roi_qpmap")))
+        {
+            InputParams.bROIasQPMAP = true;
+        }
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-sw")))
         {
             InputParams.libType = MFX_IMPL_SOFTWARE;
@@ -843,6 +919,10 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-perf_opt")))
         {
             InputParams.bIsPerf = true;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-robust")))
+        {
+            InputParams.bRobust = true;
         }
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-threads")))
         {
@@ -895,6 +975,16 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
             if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.nBitRate))
             {
                 PrintError(MSDK_STRING("BitRate \"%s\" is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-bm")))
+        {
+            VAL_CHECK(i + 1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.nBitRateMultiplier))
+            {
+                PrintError(MSDK_STRING("Bitrate multiplier \"%s\" is invalid"), argv[i]);
                 return MFX_ERR_UNSUPPORTED;
             }
         }
@@ -1014,11 +1104,28 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
         {
             VAL_CHECK(i+1 == argc, i, argv[i]);
             i++;
-            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.nTargetUsage))
+            InputParams.nTargetUsage = StrToTargetUsage(argv[i]);
+            if (!InputParams.nTargetUsage)
             {
-                PrintError(MSDK_STRING(" \"%s\" target usage is invalid"), argv[i]);
-                return MFX_ERR_UNSUPPORTED;
+                PrintError(MSDK_STRING(" \"%s\" target usage is invalid. Balanced will be used."), argv[i]);
+                InputParams.nTargetUsage = MFX_TARGETUSAGE_BALANCED;
             }
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-WeightedPred::default")))
+        {
+            InputParams.WeightedPred = MFX_WEIGHTED_PRED_DEFAULT;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-WeightedPred::implicit")))
+        {
+            InputParams.WeightedPred = MFX_WEIGHTED_PRED_IMPLICIT;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-WeightedBiPred::default")))
+        {
+            InputParams.WeightedBiPred = MFX_WEIGHTED_PRED_DEFAULT;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-WeightedBiPred::implicit")))
+        {
+            InputParams.WeightedBiPred = MFX_WEIGHTED_PRED_IMPLICIT;
         }
         else if(0 == msdk_strcmp(argv[i], MSDK_STRING("-q")))
         {
@@ -1296,7 +1403,6 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
             if (InputParams.eModeExt != VppCompOnly)
                 InputParams.eModeExt = VppCompOnly;
         }
-#if _MSDK_API > MSDK_API(1,23)
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-vpp_comp_tile_id")))
         {
             VAL_CHECK(i + 1 == argc, i, argv[i]);
@@ -1307,20 +1413,17 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 return MFX_ERR_UNSUPPORTED;
             }
         }
-#endif
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-vpp_comp_render")))
         {
             if (InputParams.eModeExt != VppComp)
                 InputParams.eModeExt = VppComp;
         }
-#if _MSDK_API >= MSDK_API(1,22)
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-dec_postproc")))
         {
             InputParams.bDecoderPostProcessing = true;
             if (InputParams.eModeExt != VppComp)
                 InputParams.eModeExt = VppComp;
         }
-#endif //_MSDK_API >= MSDK_API(1,22)
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-n")))
         {
             VAL_CHECK(i+1 == argc, i, argv[i]);
@@ -1344,6 +1447,36 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
                 msdk_opt_read(MSDK_CPU_ROTATE_PLUGIN, InputParams.strVPPPluginDLLPath);
             }
         }
+        else if(0 == msdk_strcmp(argv[i], MSDK_STRING("-mfe_frames")))
+        {
+            VAL_CHECK(i+1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.numMFEFrames))
+            {
+                PrintError(MSDK_STRING("-mfe_frames %s num frames is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if(0 == msdk_strcmp(argv[i], MSDK_STRING("-mfe_mode")))
+        {
+            VAL_CHECK(i+1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.MFMode))
+            {
+                PrintError(MSDK_STRING("-mfe_mode %s is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
+        else if(0 == msdk_strcmp(argv[i], MSDK_STRING("-mfe_timeout")))
+        {
+            VAL_CHECK(i+1 == argc, i, argv[i]);
+            i++;
+            if (MFX_ERR_NONE != msdk_opt_read(argv[i], InputParams.mfeTimeout))
+            {
+                PrintError(MSDK_STRING("-mfe_timeout %s is invalid"), argv[i]);
+                return MFX_ERR_UNSUPPORTED;
+            }
+        }
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-timeout")))
         {
             VAL_CHECK(i+1 == argc, i, argv[i]);
@@ -1355,7 +1488,10 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
             }
             skipped+=2;
         }
-
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-robust")))
+        {
+            InputParams.bRobust = true;
+        }
         else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-opencl")))
         {
             msdk_opt_read(MSDK_OCL_ROTATE_PLUGIN, InputParams.strVPPPluginDLLPath);
@@ -1475,6 +1611,14 @@ mfxStatus CmdProcessor::ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[])
         {
             InputParams.enableQSVFF=true;
         }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-extbrc::on")))
+        {
+            InputParams.nExtBRC= MFX_CODINGOPTION_ON;
+        }
+        else if (0 == msdk_strcmp(argv[i], MSDK_STRING("-extbrc::off")))
+        {
+            InputParams.nExtBRC = MFX_CODINGOPTION_OFF;
+        }
         MOD_SMT_PARSE_INPUT
         else if((stsExtBuf = CVPPExtBuffersStorage::ParseCmdLine(argv,argc,i,&InputParams,skipped))
             !=MFX_ERR_MORE_DATA)
@@ -1554,16 +1698,10 @@ sPluginParams CmdProcessor::ParsePluginParameter(msdk_char* strPluginPath)
     }
     else
     {
-#if defined(_WIN32) || defined(_WIN64)
-        msdk_char wchar[1024];
-        msdk_opt_read(strPluginPath, wchar);
-        std::wstring wstr(wchar);
-        std::string str(wstr.begin(), wstr.end());
+        msdk_char tmpVal[MSDK_MAX_FILENAME_LEN];
+        msdk_opt_read(strPluginPath, tmpVal);
 
-        strcpy_s(pluginParams.strPluginPath, str.c_str());
-#else
-        msdk_opt_read(strPluginPath, pluginParams.strPluginPath);
-#endif
+        MSDK_MAKE_BYTE_STRING(tmpVal, pluginParams.strPluginPath);
         pluginParams.type = MFX_PLUGINLOAD_TYPE_FILE;
     }
 
@@ -1675,11 +1813,11 @@ mfxStatus CmdProcessor::VerifyAndCorrectInputParams(TranscodingSample::sInputPar
         return MFX_ERR_UNSUPPORTED;
     }
 
-    if (InputParams.nLADepth && (InputParams.nLADepth < 10 || InputParams.nLADepth > 100))
+    if (InputParams.nLADepth && (InputParams.nLADepth < 10))
     {
         if ((InputParams.nLADepth != 1) || (!InputParams.nMaxSliceSize))
         {
-            PrintError(MSDK_STRING("Unsupported value of -lad parameter, must be in range [10, 100] or 1 in case of -mss option!"));
+            PrintError(MSDK_STRING("Unsupported value of -lad parameter, must be >= 10, or 1 in case of -mss option!"));
             return MFX_ERR_UNSUPPORTED;
         }
     }

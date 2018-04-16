@@ -149,6 +149,13 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
                 DXGI_FORMAT_R16G16B16A16_UNORM != desc.Format &&
                 DXGI_FORMAT_P010 != desc.Format &&
                 DXGI_FORMAT_AYUV != desc.Format
+#ifdef ENABLE_PS
+                && DXGI_FORMAT_Y210 != desc.Format
+                && DXGI_FORMAT_Y410 != desc.Format
+                && DXGI_FORMAT_P016 != desc.Format
+                && DXGI_FORMAT_Y216 != desc.Format
+                && DXGI_FORMAT_Y416 != desc.Format
+#endif
 )
             {
                 return MFX_ERR_LOCK_MEMORY;
@@ -182,6 +189,9 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
     switch (desc.Format)
     {
         case DXGI_FORMAT_P010:
+#ifdef ENABLE_PS
+        case DXGI_FORMAT_P016:
+#endif
         case DXGI_FORMAT_NV12:
             ptr->Pitch = (mfxU16)lockedRect.RowPitch;
             ptr->Y = (mfxU8 *)lockedRect.pData;
@@ -246,6 +256,36 @@ mfxStatus D3D11FrameAllocator::LockFrame(mfxMemId mid, mfxFrameData *ptr)
             ptr->V16 = 0;
 
             break;
+#ifdef ENABLE_PS
+        case DXGI_FORMAT_Y210:
+        case DXGI_FORMAT_Y216:
+            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
+            ptr->PitchLow  = (mfxU16)(lockedRect.RowPitch % (1 << 16));
+            ptr->Y16 = (mfxU16 *)lockedRect.pData;
+            ptr->U16 = ptr->Y16 + 1;
+            ptr->V16 = ptr->Y16 + 3;
+
+            break;
+
+        case DXGI_FORMAT_Y410:
+            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
+            ptr->PitchLow  = (mfxU16)(lockedRect.RowPitch % (1 << 16));
+            ptr->Y410 = (mfxY410 *)lockedRect.pData;
+            ptr->Y = 0;
+            ptr->V = 0;
+            ptr->A = 0;
+
+            break;
+
+        case DXGI_FORMAT_Y416:
+            ptr->PitchHigh = (mfxU16)(lockedRect.RowPitch / (1 << 16));
+            ptr->PitchLow = (mfxU16)(lockedRect.RowPitch % (1 << 16));
+            ptr->U16 = (mfxU16*)lockedRect.pData;
+            ptr->Y16 = ptr->U16 + 1;
+            ptr->V16 = ptr->Y16 + 1;
+            break;
+#endif
+
         default:
 
             return MFX_ERR_LOCK_MEMORY;
@@ -389,7 +429,12 @@ mfxStatus D3D11FrameAllocator::AllocImpl(mfxFrameAllocRequest *request, mfxFrame
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.MiscFlags = m_initParams.uncompressedResourceMiscFlags | D3D11_RESOURCE_MISC_SHARED;
 
-        desc.BindFlags = D3D11_BIND_DECODER;
+        if ((request->Type&MFX_MEMTYPE_VIDEO_MEMORY_ENCODER_TARGET) && (request->Type & MFX_MEMTYPE_INTERNAL_FRAME))
+        {
+            desc.BindFlags = D3D11_BIND_DECODER | D3D11_BIND_VIDEO_ENCODER;
+        }
+        else
+            desc.BindFlags = D3D11_BIND_DECODER;
 
         if ( (MFX_MEMTYPE_FROM_VPPIN & request->Type) && (DXGI_FORMAT_YUY2 == desc.Format) ||
              (DXGI_FORMAT_B8G8R8A8_UNORM == desc.Format) ||
@@ -506,7 +551,22 @@ DXGI_FORMAT D3D11FrameAllocator::ConverColortFormat(mfxU32 fourcc)
             return DXGI_FORMAT_R10G10B10A2_UNORM;
 
         case DXGI_FORMAT_AYUV:
+        case MFX_FOURCC_AYUV:
             return DXGI_FORMAT_AYUV;
+
+#ifdef ENABLE_PS
+        case MFX_FOURCC_Y210:
+            return DXGI_FORMAT_Y210;
+        case MFX_FOURCC_Y410:
+            return DXGI_FORMAT_Y410;
+
+        case MFX_FOURCC_P016:
+            return DXGI_FORMAT_P016;
+        case MFX_FOURCC_Y216:
+            return DXGI_FORMAT_Y216;
+        case MFX_FOURCC_Y416:
+            return DXGI_FORMAT_Y416;
+#endif
 
         default:
             return DXGI_FORMAT_UNKNOWN;

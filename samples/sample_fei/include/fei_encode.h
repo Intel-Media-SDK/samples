@@ -53,6 +53,7 @@ public:
     FILE* m_pMBstat_out;
     FILE* m_pMV_out;
     FILE* m_pMBcode_out;
+    FILE* m_pRepackStat_out;
 
     std::vector<mfxExtBuffer*> m_InitExtParams;
 

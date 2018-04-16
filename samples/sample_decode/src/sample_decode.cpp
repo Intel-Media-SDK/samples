@@ -46,6 +46,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("  3. Dump model: decoding with YUV dumping (-o option)\n"));
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("Options:\n"));
+    msdk_printf(MSDK_STRING("   [-?]                      - print help\n"));
     msdk_printf(MSDK_STRING("   [-hw]                     - use platform specific SDK implementation (default)\n"));
     msdk_printf(MSDK_STRING("   [-sw]                     - use software implementation, if not specified platform specific SDK implementation is used\n"));
     msdk_printf(MSDK_STRING("   [-p guid]                 - 32-character hexadecimal guid string\n"));
@@ -55,6 +56,9 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-w]                      - output width\n"));
     msdk_printf(MSDK_STRING("   [-h]                      - output height\n"));
     msdk_printf(MSDK_STRING("   [-di bob/adi]             - enable deinterlacing BOB/ADI\n"));
+#if (MFX_VERSION >= 1025)
+    msdk_printf(MSDK_STRING("   [-d]                      - enable decode error report\n"));
+#endif
     msdk_printf(MSDK_STRING("\n"));
     msdk_printf(MSDK_STRING("JPEG Chroma Type:\n"));
     msdk_printf(MSDK_STRING("   [-jpeg_rgb] - RGB Chroma Type\n"));
@@ -77,9 +81,6 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("       m(0,1..)              - monitor id \n"));
     msdk_printf(MSDK_STRING("       t(0/1)                - enable/disable window's title\n"));
     msdk_printf(MSDK_STRING("       tmo                   - timeout for -wall option\n"));
-    msdk_printf(MSDK_STRING("Screen capture parameters:\n"));
-    msdk_printf(MSDK_STRING("   [-scr:w]                  - screen resolution width\n"));
-    msdk_printf(MSDK_STRING("   [-scr:h]                  - screen resolution height\n"));
     msdk_printf(MSDK_STRING("\n"));
 
 #endif
@@ -102,14 +103,12 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-async]                  - depth of asynchronous pipeline. default value is 4. must be between 1 and 20\n"));
     msdk_printf(MSDK_STRING("   [-gpucopy::<on,off>] Enable or disable GPU copy mode\n"));
     msdk_printf(MSDK_STRING("   [-timeout]                - timeout in seconds\n"));
-#if _MSDK_API >= MSDK_API(1,22)
     msdk_printf(MSDK_STRING("   [-dec_postproc force/auto] - resize after decoder using direct pipe\n"));
     msdk_printf(MSDK_STRING("                  force: instruct to use decoder-based post processing\n"));
     msdk_printf(MSDK_STRING("                         or fail if the decoded stream is unsupported\n"));
     msdk_printf(MSDK_STRING("                  auto: instruct to use decoder-based post processing for supported streams \n"));
     msdk_printf(MSDK_STRING("                        or perform VPP operation through separate pipeline component for unsupported streams\n"));
 
-#endif //_MSDK_API >= MSDK_API(1,22)
 #if !defined(_WIN32) && !defined(_WIN64)
     msdk_printf(MSDK_STRING("   [-threads_num]            - number of mediasdk task threads\n"));
     msdk_printf(MSDK_STRING("   [-threads_schedtype]      - scheduling type of mediasdk task threads\n"));
@@ -169,7 +168,12 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             continue;
         }
 
-        if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-sw")))
+        if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-?")))
+        {
+            PrintHelp(strInput[0], MSDK_STRING(""));
+            return MFX_ERR_ABORTED;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-sw")))
         {
             pParams->bUseHWLib = false;
         }
@@ -399,6 +403,10 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             pParams->gpuCopy = MFX_GPUCOPY_OFF;
         }
 #if !defined(_WIN32) && !defined(_WIN64)
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-d")))
+        {
+            pParams->bErrorReport = true;
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-threads_num")))
         {
             if(i + 1 >= nArgNum)
@@ -439,7 +447,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             }
         }
 #endif // #if !defined(_WIN32) && !defined(_WIN64)
-#if _MSDK_API >= MSDK_API(1,22)
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-dec_postproc")))
         {
             if(i + 1 >= nArgNum)
@@ -467,7 +474,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 return MFX_ERR_UNSUPPORTED;
             }
         }
-#endif //_MSDK_API >= MSDK_API(1,22)
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-f")))
         {
             if(i + 1 >= nArgNum)
@@ -478,32 +484,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
             if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->nMaxFPS))
             {
                 PrintHelp(strInput[0], MSDK_STRING("rendering frame rate is invalid"));
-                return MFX_ERR_UNSUPPORTED;
-            }
-        }
-        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-scr:w")))
-        {
-            if (i + 1 >= nArgNum)
-            {
-                PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for -scr:w key"));
-                return MFX_ERR_UNSUPPORTED;
-            }
-            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->scrWidth))
-            {
-                PrintHelp(strInput[0], MSDK_STRING("screen width rate is invalid"));
-                return MFX_ERR_UNSUPPORTED;
-            }
-        }
-        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-scr:h")))
-        {
-            if (i + 1 >= nArgNum)
-            {
-                PrintHelp(strInput[0], MSDK_STRING("Not enough parameters for -scr:h key"));
-                return MFX_ERR_UNSUPPORTED;
-            }
-            if (MFX_ERR_NONE != msdk_opt_read(strInput[++i], pParams->scrHeight))
-            {
-                PrintHelp(strInput[0], MSDK_STRING("screen height is invalid"));
                 return MFX_ERR_UNSUPPORTED;
             }
         }
@@ -582,16 +562,10 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-path")))
         {
             i++;
-#if defined(_WIN32) || defined(_WIN64)
-            msdk_char wchar[MSDK_MAX_FILENAME_LEN];
-            msdk_opt_read(strInput[i], wchar);
-            std::wstring wstr(wchar);
-            std::string str(wstr.begin(), wstr.end());
+            msdk_char tmpVal[MSDK_MAX_FILENAME_LEN];
+            msdk_opt_read(strInput[i], tmpVal);
+            MSDK_MAKE_BYTE_STRING(tmpVal, pParams->pluginParams.strPluginPath);
 
-            strcpy_s(pParams->pluginParams.strPluginPath, str.c_str());
-#else
-            msdk_opt_read(strInput[i], pParams->pluginParams.strPluginPath);
-#endif
             pParams->pluginParams.type = MFX_PLUGINLOAD_TYPE_FILE;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-i:null")))
@@ -651,23 +625,9 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         }
     }
 
-    if (0 == msdk_strlen(pParams->strSrcFile) && MFX_CODEC_CAPTURE != pParams->videoType)
+    if (0 == msdk_strlen(pParams->strSrcFile))
     {
         msdk_printf(MSDK_STRING("error: source file name not found"));
-        return MFX_ERR_UNSUPPORTED;
-    }
-
-    if (MFX_CODEC_CAPTURE == pParams->videoType)
-    {
-        if (!pParams->scrWidth || !pParams->scrHeight)
-        {
-            msdk_printf(MSDK_STRING("error: for screen capture, width and height must be specified manually (-scr:w and -scr:h)"));
-            return MFX_ERR_UNSUPPORTED;
-        }
-    }
-    else if (pParams->scrWidth || pParams->scrHeight)
-    {
-        msdk_printf(MSDK_STRING("error: width and height parameters are supported only by screen capture decoder"));
         return MFX_ERR_UNSUPPORTED;
     }
 
@@ -682,7 +642,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         MFX_CODEC_HEVC    != pParams->videoType &&
         MFX_CODEC_VC1     != pParams->videoType &&
         MFX_CODEC_JPEG    != pParams->videoType &&
-        MFX_CODEC_CAPTURE != pParams->videoType &&
         MFX_CODEC_VP8     != pParams->videoType &&
         MFX_CODEC_VP9     != pParams->videoType)
     {
@@ -710,6 +669,11 @@ int main(int argc, char *argv[])
     mfxStatus sts = MFX_ERR_NONE; // return value check
 
     sts = ParseInputString(argv, (mfxU8)argc, &Params);
+    if (sts == MFX_ERR_ABORTED)
+    {
+        // No error, just need to close app normally
+        return MFX_ERR_NONE;
+    }
     MSDK_CHECK_PARSE_RESULT(sts, MFX_ERR_NONE, 1);
 
     if (Params.bIsMVC)
@@ -723,12 +687,21 @@ int main(int argc, char *argv[])
 
     msdk_printf(MSDK_STRING("Decoding started\n"));
 
+    mfxU64 prevResetBytesCount = 0xFFFFFFFFFFFFFFFF;
     for (;;)
     {
         sts = Pipeline.RunDecoding();
 
         if (MFX_ERR_INCOMPATIBLE_VIDEO_PARAM == sts || MFX_ERR_DEVICE_LOST == sts || MFX_ERR_DEVICE_FAILED == sts)
         {
+            if (prevResetBytesCount == Pipeline.GetTotalBytesProcessed())
+            {
+                msdk_printf(MSDK_STRING("\nERROR: No input data was consumed since last reset. Quitting to avoid looping forever.\n"));
+                break;
+            }
+            prevResetBytesCount = Pipeline.GetTotalBytesProcessed();
+
+
             if (MFX_ERR_INCOMPATIBLE_VIDEO_PARAM == sts)
             {
                 msdk_printf(MSDK_STRING("\nERROR: Incompatible video parameters detected. Recovering...\n"));

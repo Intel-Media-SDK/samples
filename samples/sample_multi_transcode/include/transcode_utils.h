@@ -107,11 +107,9 @@ namespace TranscodingSample
         mfxStatus ParseParFile(FILE* file);
         mfxStatus TokenizeLine(msdk_char *pLine, mfxU32 length);
 
-#if _MSDK_API >= MSDK_API(1,22)
         static bool isspace(char a);
         static bool is_not_allowed_char(char a);
         bool ParseROIFile(msdk_char const *roi_file_name, std::vector<mfxExtEncoderROI>& m_ROIData);
-#endif //_MSDK_API >= MSDK_API(1,22)
 
         mfxStatus ParseParamsForOneSession(mfxU32 argc, msdk_char *argv[]);
         mfxStatus ParseOption__set(msdk_char* strCodecType, msdk_char* strPluginPath);
@@ -125,7 +123,10 @@ namespace TranscodingSample
         msdk_char                                    *m_parName;
         mfxU32                                       statisticsWindowSize;
         FILE                                         *statisticsLogFile;
+        //store a name of a Logfile
+        msdk_tstring                                 DumpLogFileName;
         mfxU32                                       m_nTimeout;
+        bool                                         m_bRobust;
         bool                                         shouldUseGreedyFormula;
         std::vector<msdk_string>                     m_lines;
     private:

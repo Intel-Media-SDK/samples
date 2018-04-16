@@ -109,7 +109,10 @@ static
     pParams->rotate.clear(); pParams->rotate.push_back(0);
     pParams->bScaling     = false;
     pParams->scalingMode  = MFX_SCALING_MODE_DEFAULT;
+    pParams->bChromaSiting = false;
+    pParams->uChromaSiting = 0;
     pParams->numFrames    = 0;
+    pParams->fccSource = MFX_FOURCC_NV12;
 
     // Optional video processing features
     pParams->mirroringParam.clear();        pParams->mirroringParam.push_back(      *pDefaultFiltersParam->pMirroringParam      );
@@ -134,7 +137,6 @@ static
     pParams->roiCheckParam.srcSeed = 0;
     pParams->roiCheckParam.dstSeed = 0;
     pParams->forcedOutputFourcc = 0;
-    pParams->isInI420 = false;
 
     // plug-in GUID
     pParams->need_plugin = false;
@@ -244,8 +246,8 @@ void ownToMfxFrameInfo( sOwnFrameInfo* in, mfxFrameInfo* out, bool copyCropParam
         out->CropW          = in->nWidth;
         out->CropH          = in->nHeight;
     }
+    out->FourCC = in->FourCC;
 
-    out->FourCC         = in->FourCC;
     out->PicStruct      = in->PicStruct;
     out->BitDepthLuma   = in->BitDepthLuma;
     out->BitDepthChroma = in->BitDepthChroma;
@@ -303,7 +305,7 @@ int main(int argc, msdk_char *argv[])
     //mfxU16              argbSurfaceIndex = 0xffff;
 
     /* default parameters */
-    sOwnFrameInfo             defaultOwnFrameInfo         = { 0, 0, 0, 352, 288, 0, 0, 352, 288, MFX_FOURCC_NV12, MFX_PICSTRUCT_PROGRESSIVE, 30.0 };
+    sOwnFrameInfo             defaultOwnFrameInfo         = { 0, 0, 0, 0, 0, 0, 0, 0, 0, MFX_FOURCC_NV12, MFX_PICSTRUCT_PROGRESSIVE, 30.0 };
     sDIParam                  defaultDIParam              = { 0, 0, 0, VPP_FILTER_DISABLED };
     sProcAmpParam             defaultProcAmpParam         = { 0.0, 1.0, 1.0, 0.0, VPP_FILTER_DISABLED };
     sDetailParam              defaultDetailParam          = { 1,  VPP_FILTER_DISABLED };
@@ -386,23 +388,48 @@ int main(int argc, msdk_char *argv[])
         ptsMaker.reset(new PTSMaker);
     }
 
-    //prepare file reader (YUV/RGB file)
+       //prepare file reader (YUV/RGB file)
     Resources.numSrcFiles = 1;
     if (Params.compositionParam.mode == VPP_FILTER_ENABLED_CONFIGURED)
     {
         Resources.numSrcFiles = Params.numStreams > MAX_INPUT_STREAMS ? MAX_INPUT_STREAMS : Params.numStreams;
         for (int i = 0; i < Resources.numSrcFiles; i++)
         {
-            ownToMfxFrameInfo( &(Params.inFrameInfo[i]), &(realFrameInfoIn[i]), true);
+            ownToMfxFrameInfo(&(Params.inFrameInfo[i]), &(realFrameInfoIn[i]), true);
             // Set ptsMaker for the first stream only - it will store PTSes
-            sts = yuvReaders[i].Init(Params.compositionParam.streamInfo[i].streamName, i==0 ? ptsMaker.get() : NULL, Params.isInI420);
+            sts = yuvReaders[i].Init(Params.compositionParam.streamInfo[i].streamName, i == 0 ? ptsMaker.get() : NULL, realFrameInfoIn[i].FourCC);
+
+            // In-place conversion check - I420 and YV12+D3D11 should be converted in reader and processed as NV12
+            bool shouldConvert = false;
+            if (realFrameInfoIn[i].FourCC == MFX_FOURCC_I420 ||
+                ((Params.ImpLib & 0x0f00) == MFX_IMPL_VIA_D3D11 && realFrameInfoIn[i].FourCC == MFX_FOURCC_YV12))
+            {
+                realFrameInfoIn[i].FourCC = MFX_FOURCC_YV12;
+                shouldConvert = true;
+            }
+            if (shouldConvert)
+            {
+                msdk_printf(MSDK_STRING("[WARNING] D3D11 does not support YV12 and I420 surfaces. Input will be converted to NV12 by file reader.\n"));
+            }
+
+
             MSDK_CHECK_STATUS(sts, "yuvReaders[i].Init failed");
         }
     }
     else
     {
+        // D3D11 does not support I420 and YV12 surfaces. So file reader will convert them into nv12.
+        // It may be slower than using vpp
+        if (Params.fccSource == MFX_FOURCC_I420 ||
+            ((Params.ImpLib & 0x0f00) == MFX_IMPL_VIA_D3D11 && Params.fccSource == MFX_FOURCC_YV12))
+        {
+            msdk_printf(MSDK_STRING("[WARNING] D3D11 does not support YV12 and I420 surfaces. Input will be converted to NV12 by file reader.\n"));
+            Params.inFrameInfo[0].FourCC = MFX_FOURCC_NV12;
+            Params.frameInfoIn[0].FourCC = MFX_FOURCC_NV12;
+        }
+
         ownToMfxFrameInfo( &(Params.frameInfoIn[0]),  &realFrameInfoIn[0]);
-        sts = yuvReaders[VPP_IN].Init(Params.strSrcFile,ptsMaker.get(),Params.isInI420);
+        sts = yuvReaders[VPP_IN].Init(Params.strSrcFile,ptsMaker.get(), Params.fccSource);
         MSDK_CHECK_STATUS(sts, "yuvReaders[VPP_IN].Init failed");
     }
     ownToMfxFrameInfo( &(Params.frameInfoOut[0]), &realFrameInfoOut);
@@ -737,6 +764,7 @@ int main(int argc, msdk_char *argv[])
                 }
             }
 
+            MSDK_CHECK_STATUS_NO_RET(sts, "RunFrameVPPAsync(Ex) failed")
             MSDK_BREAK_ON_ERROR(sts);
             surfStore.m_SyncPoints.push_back(SurfaceVPPStore::SyncPair(syncPoint,pOutSurf));
             IncreaseReference(&pOutSurf->Data);

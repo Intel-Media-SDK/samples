@@ -31,12 +31,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #define VIDEO_MAIN_FORMAT D3DFMT_YUY2
 
-class IGFXS3DControl;
-
 /** Direct3D 9 device implementation.
-@note Can be initilized for only 1 or two 2 views. Handle to
-MFX_HANDLE_GFXS3DCONTROL must be set prior if initializing for 2 views.
-
 @note Device always set D3DPRESENT_PARAMETERS::Windowed to TRUE.
 */
 class CD3D9Device : public CHWDevice
@@ -69,8 +64,6 @@ private:
     UINT                        m_resetToken;
 
     mfxU16                      m_nViews;
-    IGFXS3DControl*             m_pS3DControl;
-
 
     D3DSURFACE_DESC                 m_backBufferDesc;
 

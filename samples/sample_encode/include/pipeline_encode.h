@@ -47,6 +47,10 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "v4l2_util.h"
 #endif
 
+#if (MFX_VERSION >= 1024)
+#include "brc_routines.h"
+#endif
+
 msdk_tick time_get_tick(void);
 msdk_tick time_get_frequency(void);
 
@@ -79,6 +83,7 @@ struct sInputParams
     mfxU16 nGopRefDist;
     mfxU16 nNumRefFrame;
     mfxU16 nBRefType;
+    mfxU16 nPRefType;
     mfxU16 nIdrInterval;
     mfxU16 reserved[4];
 
@@ -114,6 +119,9 @@ struct sInputParams
     mfxU16 nGPB;
     mfxU16 nExtBRC;
 
+    mfxU16 WeightedPred;
+    mfxU16 WeightedBiPred;
+
     mfxU16 TransferMatrix;
 
     bool enableQSVFF;
@@ -134,11 +142,21 @@ struct sInputParams
     mfxU16 GopOptFlag;
     mfxU32 nMaxFrameSize;
 
+    mfxU16 LowDelayBRC;
+
+    mfxU16 IntRefType;
+    mfxU16 IntRefCycleSize;
+    mfxU16 IntRefQPDelta;
+    mfxU16 IntRefCycleDist;
+
     bool bUncut;
     bool shouldUseShiftedP010Enc;
     bool shouldUseShiftedP010VPP;
 
+    bool bOpenCL;
+
     msdk_char DumpFileName[MSDK_MAX_FILENAME_LEN];
+    msdk_char uSEI[MSDK_MAX_USER_DATA_UNREG_SEI_LEN];
 
 #if defined (ENABLE_V4L2_SUPPORT)
     msdk_char DeviceName[MSDK_MAX_FILENAME_LEN];
@@ -263,9 +281,14 @@ protected:
     // Set up video signal information
     mfxExtVideoSignalInfo m_VideoSignalInfo;
 
+#if (MFX_VERSION >= 1024)
+    mfxExtBRC           m_ExtBRC;
+#endif
     // external parameters for each component are stored in a vector
     std::vector<mfxExtBuffer*> m_VppExtParams;
     std::vector<mfxExtBuffer*> m_EncExtParams;
+
+    std::vector<mfxPayload*> m_UserDataUnregSEI;
 
     CHWDevice *m_hwdev;
 
@@ -278,6 +301,8 @@ protected:
     bool   m_bCutOutput;
     bool   m_bInsertIDR;
     bool   m_bTimeOutExceed;
+
+    bool   m_bIsFieldSplitting;
 
     mfxEncodeCtrl m_encCtrl;
 

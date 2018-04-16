@@ -164,52 +164,41 @@ mfxStatus MFX_VppInterface::VPPoneFrame(mfxFrameSurface1* pSurf_in, mfxFrameSurf
 {
     mfxStatus sts = MFX_ERR_NONE;
 
+    // VPP DS goes below
     for (;;)
     {
         sts = m_pmfxVPP->RunFrameVPPAsync(pSurf_in, pSurf_out, NULL, &m_SyncPoint);
-        if (sts == MFX_ERR_GPU_HANG)
-        {
-            return MFX_ERR_GPU_HANG;
-        }
+        MSDK_CHECK_WRN(sts, "WRN during RunFrameVPPAsync");
 
-        if (!m_SyncPoint)
+        if (MFX_ERR_NONE < sts && !m_SyncPoint)
         {
+            // Repeat the call if warning and no output
+
             if (MFX_WRN_DEVICE_BUSY == sts){
                 WaitForDeviceToBecomeFree(*m_pmfxSession, m_SyncPoint, sts);
             }
-            else
-                return sts;
         }
-        else if (MFX_ERR_NONE <= sts) {
-            sts = MFX_ERR_NONE; // ignore warnings if output is available
+        else if (MFX_ERR_NONE < sts && m_SyncPoint)
+        {
+            // Ignore warnings if output is available
+            sts = m_pmfxSession->SyncOperation(m_SyncPoint, MSDK_WAIT_INTERVAL);
+            mdprintf(stderr, "VPP synced : %d\n", sts);
+
             break;
         }
         else
+        {
+            // Break if error
             MSDK_BREAK_ON_ERROR(sts);
-    }
 
-    for (;;)
-    {
-        sts = m_pmfxSession->SyncOperation(m_SyncPoint, MSDK_WAIT_INTERVAL);
-        if (sts == MFX_ERR_GPU_HANG)
-        {
-            return MFX_ERR_GPU_HANG;
-        }
-
-        if (!m_SyncPoint)
-        {
-            if (MFX_WRN_DEVICE_BUSY == sts){
-                WaitForDeviceToBecomeFree(*m_pmfxSession, m_SyncPoint, sts);
+            if (m_SyncPoint)
+            {
+                sts = m_pmfxSession->SyncOperation(m_SyncPoint, MSDK_WAIT_INTERVAL);
+                mdprintf(stderr, "VPP synced : %d\n", sts);
             }
-            else
-                return sts;
-        }
-        else if (MFX_ERR_NONE <= sts) {
-            sts = MFX_ERR_NONE; // ignore warnings if output is available
+
             break;
         }
-        else
-            MSDK_BREAK_ON_ERROR(sts);
     }
 
     return sts;
@@ -387,70 +376,68 @@ mfxStatus MFX_DecodeInterface::GetOneFrame(mfxFrameSurface1* & pSurf)
 
     mfxStatus sts = MFX_ERR_NONE;
 
-    if (!m_bEndOfFile)
+    for (;;)
     {
-        sts = DecodeOneFrame(pSurf);
-        if (MFX_ERR_MORE_DATA == sts)
+        if (!m_bEndOfFile)
+        {
+            sts = DecodeOneFrame(pSurf);
+            if (MFX_ERR_MORE_DATA == sts)
+            {
+                sts = DecodeLastFrame(pSurf);
+                m_bEndOfFile = true;
+            }
+        }
+        else
         {
             sts = DecodeLastFrame(pSurf);
-            m_bEndOfFile = true;
         }
-    }
-    else
-    {
-        sts = DecodeLastFrame(pSurf);
-    }
+        MSDK_CHECK_WRN(sts, "WRN during Decode<One|Last>Frame");
 
-    if (sts == MFX_ERR_GPU_HANG)
-    {
-        return sts;
-    }
-
-    if (sts == MFX_ERR_MORE_DATA)
-    {
-        if (m_pAppConfig->nTimeout)
+        if (MFX_ERR_NONE < sts && !m_SyncPoint)
         {
-            // infinite loop mode, need to proceed from the beginning
+            // Repeat the call if warning and no output
+
+            if (MFX_WRN_DEVICE_BUSY == sts){
+                WaitForDeviceToBecomeFree(*m_pmfxSession, m_SyncPoint, sts);
+            }
+        }
+        else if (MFX_ERR_NONE < sts && m_SyncPoint)
+        {
+            // Ignore warnings if output is available
+            sts = m_pmfxSession->SyncOperation(m_SyncPoint, MSDK_WAIT_INTERVAL);
+            mdprintf(stderr, "DECODE synced : %d\n", sts);
+
+            break;
+        }
+        else if (sts == MFX_ERR_MORE_DATA && m_pAppConfig->nTimeout)
+        {
+            // Infinite loop mode, need to proceed from the beginning
             return MFX_ERR_MORE_DATA;
         }
-        pSurf = NULL;
+        else
+        {
+            // Break if error
+            MSDK_BREAK_ON_ERROR(sts);
+
+            if (m_SyncPoint)
+            {
+                sts = m_pmfxSession->SyncOperation(m_SyncPoint, MSDK_WAIT_INTERVAL);
+                mdprintf(stderr, "DECODE synced : %d\n", sts);
+            }
+
+            break;
+        }
+    }
+    if (sts == MFX_ERR_MORE_DATA)
+    {
         return sts;
     }
     MSDK_CHECK_STATUS(sts, "Decode<One|Last>Frame failed");
 
-    if (m_pAppConfig->bDECODESTREAMOUT || m_pAppConfig->PipelineCfg.mixedPicstructs || !m_pAppConfig->bVPP)
+    if (m_pAppConfig->bDECODESTREAMOUT)
     {
-        for (;;)
-        {
-            sts = m_pmfxSession->SyncOperation(m_SyncPoint, MSDK_WAIT_INTERVAL);
-
-            if (sts == MFX_ERR_GPU_HANG)
-            {
-                return MFX_ERR_GPU_HANG;
-            }
-
-            if (MFX_ERR_NONE < sts && !m_SyncPoint) // repeat the call if warning and no output
-            {
-                if (MFX_WRN_DEVICE_BUSY == sts){
-                    WaitForDeviceToBecomeFree(*m_pmfxSession, m_SyncPoint, sts); // wait if device is busy
-                }
-            }
-            else if (MFX_ERR_NONE <= sts && m_SyncPoint) {
-                sts = MFX_ERR_NONE; // ignore warnings if output is available
-                break;
-            }
-            else
-            {
-                MSDK_BREAK_ON_ERROR(sts);
-            }
-        }
-        MSDK_CHECK_STATUS(sts, "DECODE: SyncOperation failed");
-
-        if (m_pAppConfig->bDECODESTREAMOUT)
-        {
-            sts = FlushOutput(pSurf);
-            MSDK_CHECK_STATUS(sts, "DECODE: FlushOutput failed");
-        }
+        sts = FlushOutput(pSurf);
+        MSDK_CHECK_STATUS(sts, "DECODE: FlushOutput failed");
     }
 
     return sts;
@@ -487,15 +474,11 @@ mfxStatus MFX_DecodeInterface::DecodeOneFrame(mfxFrameSurface1 * & pSurf_out)
         }
 
         sts = m_pmfxDECODE->DecodeFrameAsync(&m_mfxBS, pDecSurf, &pSurf_out, &m_SyncPoint);
-        if (sts == MFX_ERR_GPU_HANG)
-        {
-            return MFX_ERR_GPU_HANG;
-        }
 
-        // ignore warnings if output is available,
         if (MFX_ERR_NONE < sts && m_SyncPoint)
         {
-            sts = MFX_ERR_NONE;
+            // Ignore warnings if output is available
+            break;
         }
 
     } // while (MFX_ERR_MORE_DATA == sts || MFX_ERR_MORE_SURFACE == sts || MFX_ERR_NONE < sts)
@@ -522,16 +505,14 @@ mfxStatus MFX_DecodeInterface::DecodeLastFrame(mfxFrameSurface1 * & pSurf_out)
         MSDK_CHECK_POINTER(pDecSurf, MFX_ERR_MEMORY_ALLOC); // return an error if a free surface wasn't found
 
         sts = m_pmfxDECODE->DecodeFrameAsync(NULL, pDecSurf, &pSurf_out, &m_SyncPoint);
-        if (sts == MFX_ERR_GPU_HANG)
-        {
-            return MFX_ERR_GPU_HANG;
-        }
     }
     return sts;
 }
 
 mfxStatus MFX_DecodeInterface::FlushOutput(mfxFrameSurface1* pSurf)
 {
+    MSDK_CHECK_POINTER(pSurf, MFX_ERR_NULL_PTR);
+
     mfxStatus sts = MFX_ERR_NONE;
 
     for (int i = 0; i < pSurf->Data.NumExtParam; ++i)
@@ -576,7 +557,7 @@ mfxStatus MFX_DecodeInterface::ResetState()
 mfxStatus YUVreader::GetOneFrame(mfxFrameSurface1* & pSurf)
 {
     MFX_ITT_TASK("GetOneFrame");
-    mfxStatus sts = MFX_ERR_NONE;
+    mfxStatus res = MFX_ERR_NONE;
 
     // point pSurf to encoder surface
     pSurf = m_pSurfPool->GetFreeSurface_FEI();
@@ -587,24 +568,25 @@ mfxStatus YUVreader::GetOneFrame(mfxFrameSurface1* & pSurf)
     if (m_bExternalAlloc)
     {
         // get YUV pointers
-        sts = m_pMFXAllocator->Lock(m_pMFXAllocator->pthis, pSurf->Data.MemId, &(pSurf->Data));
+        mfxStatus sts = m_pMFXAllocator->Lock(m_pMFXAllocator->pthis, pSurf->Data.MemId, &(pSurf->Data));
         MSDK_CHECK_STATUS(sts, "m_pMFXAllocator->Lock failed");
     }
 
-    sts = m_FileReader.LoadNextFrame(pSurf);
-    if (sts == MFX_ERR_MORE_DATA && m_pAppConfig->nTimeout)
-    {
-        // infinite loop mode, need to proceed from the beginning
-        return MFX_ERR_MORE_DATA;
-    }
-    MSDK_CHECK_PARSE_RESULT(sts, MFX_ERR_NONE, sts);
+    res = m_FileReader.LoadNextFrame(pSurf);
 
     // ... after we're done call Unlock
     if (m_bExternalAlloc)
     {
-        sts = m_pMFXAllocator->Unlock(m_pMFXAllocator->pthis, pSurf->Data.MemId, &(pSurf->Data));
+        mfxStatus sts = m_pMFXAllocator->Unlock(m_pMFXAllocator->pthis, pSurf->Data.MemId, &(pSurf->Data));
         MSDK_CHECK_STATUS(sts, "m_pMFXAllocator->Unlock failed");
     }
 
-    return sts;
+    if (res == MFX_ERR_MORE_DATA && m_pAppConfig->nTimeout)
+    {
+        // infinite loop mode, need to proceed from the beginning
+        return MFX_ERR_MORE_DATA;
+    }
+    MSDK_CHECK_PARSE_RESULT(res, MFX_ERR_NONE, res);
+
+    return res;
 }

@@ -52,6 +52,8 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-l numSlices] - number of slices \n"));
     msdk_printf(MSDK_STRING("   [-x (-NumRefFrame) numRefs] - number of reference frames \n"));
     msdk_printf(MSDK_STRING("   [-qp qp_value] - QP value for frames (default is 26)\n"));
+    msdk_printf(MSDK_STRING("   [-vbr] - use VBR rate control, it is supported only for progressive content for PAK only pipeline\n"));
+    msdk_printf(MSDK_STRING("   [-TargetKbps value] - target bitrate for VBR rate control\n"));
     msdk_printf(MSDK_STRING("   [-num_active_P numRefs] - number of maximum allowed references for P frames (up to 4(default)); for PAK only limit is 16\n"));
     msdk_printf(MSDK_STRING("   [-num_active_BL0 numRefs] - number of maximum allowed backward references for B frames (up to 4(default)); for PAK only limit is 16\n"));
     msdk_printf(MSDK_STRING("   [-num_active_BL1 numRefs] - number of maximum allowed forward references for B frames (up to 2(default) for interlaced, 1(default) for progressive); for PAK only limit is 16\n"));
@@ -80,7 +82,9 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage)
     msdk_printf(MSDK_STRING("   [-mbstat file] - file to output per MB distortions for each frame\n"));
     msdk_printf(MSDK_STRING("   [-mbqp file] - file to input per MB QPs the same for each frame\n"));
     msdk_printf(MSDK_STRING("   [-repackctrl file] - file to input max encoded frame size,number of pass and delta qp for each frame(ENCODE only)\n"));
+    msdk_printf(MSDK_STRING("   [-repackstat file] - file to output each frame's number of passes (ENCODE only)\n"));
     msdk_printf(MSDK_STRING("   [-weights file] - file to input weights for explicit weighted prediction (ENCODE only).\n"));
+    msdk_printf(MSDK_STRING("   [-ImplicitWPB] - enable implicit weighted prediction B frames (ENCODE only).\n"));
     msdk_printf(MSDK_STRING("   [-streamout file] - dump decode streamout structures\n"));
     msdk_printf(MSDK_STRING("   [-sys] - use system memory for surfaces (ENCODE only)\n"));
     msdk_printf(MSDK_STRING("   [-8x8stat] - set 8x8 block for statistic report, default is 16x16 (PREENC only)\n"));
@@ -279,10 +283,19 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
             pConfig->repackctrlFile = strInput[i+1];
             i++;
         }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-repackstat")))
+        {
+            pConfig->repackstatFile = strInput[i+1];
+            i++;
+        }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-weights")))
         {
             pConfig->weightsFile = strInput[i+1];
             i++;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-ImplicitWPB")))
+        {
+            pConfig->bImplicitWPB = true;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-mbsize")))
         {
@@ -339,6 +352,18 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         {
             i++;
             pConfig->QP = (mfxU8)msdk_strtol(strInput[i], &stopCharacter, 10);
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-vbr")))
+        {
+            pConfig->RateControlMethod = MFX_RATECONTROL_VBR;
+        }
+        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-TargetKbps")))
+        {
+            if (!strInput[++i] || MFX_ERR_NONE != msdk_opt_read(strInput[i], pConfig->TargetKbps))
+            {
+                PrintHelp(strInput[0], MSDK_STRING("ERROR: TargetKbps is invalid"));
+                return MFX_ERR_UNSUPPORTED;
+            }
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-num_active_P")))
         {
@@ -1030,7 +1055,9 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         pConfig->EncodedOrder = true;
     }
 
-    if (pConfig->bPerfMode && (pConfig->mvinFile || pConfig->mvoutFile || pConfig->mbctrinFile || pConfig->mbstatoutFile || pConfig->mbcodeoutFile || pConfig->mbQpFile || pConfig->repackctrlFile || pConfig->decodestreamoutFile || pConfig->weightsFile))
+    if (pConfig->bPerfMode && (pConfig->mvinFile || pConfig->mvoutFile || pConfig->mbctrinFile || pConfig->mbstatoutFile || pConfig->mbcodeoutFile || pConfig->mbQpFile || pConfig->repackctrlFile ||
+                               pConfig->repackstatFile ||
+                               pConfig->decodestreamoutFile || pConfig->weightsFile))
     {
         msdk_printf(MSDK_STRING("\nWARNING: All file operations would be ignored in performance mode!\n"));
 
@@ -1041,8 +1068,20 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, AppConfig* pCon
         pConfig->mbcodeoutFile       = NULL;
         pConfig->mbQpFile            = NULL;
         pConfig->repackctrlFile      = NULL;
+        pConfig->repackstatFile      = NULL;
         pConfig->decodestreamoutFile = NULL;
         pConfig->weightsFile         = NULL;
+    }
+
+    if (!pConfig->bENCODE && (pConfig->repackctrlFile
+                              || pConfig->repackstatFile
+       ))
+    {
+        msdk_printf(MSDK_STRING("\nWARNING: Repackctrl/Repackstat is disabled \
+                                for being only supported in ENCODE!\n"));
+        pConfig->repackctrlFile =
+        pConfig->repackstatFile =
+          NULL;
     }
 
     if (pConfig->bENCODE || pConfig->bENCPAK || pConfig->bOnlyENC || pConfig->bOnlyPAK)
@@ -1185,6 +1224,14 @@ mfxStatus CheckOptions(AppConfig* pConfig)
         !((pConfig->nPicStruct == MFX_PICSTRUCT_FIELD_BFF) || (pConfig->nPicStruct == MFX_PICSTRUCT_FIELD_TFF)))
     {
         fprintf(stderr, "ERROR: Field Processing mode works only with interlaced content (TFF or BFF)\n");
+        sts = MFX_ERR_UNSUPPORTED;
+    }
+
+    if (!( (pConfig->RateControlMethod == MFX_RATECONTROL_CQP && pConfig->QP <= 51) ||
+           (pConfig->bOnlyPAK && pConfig->RateControlMethod == MFX_RATECONTROL_VBR &&
+            pConfig->TargetKbps>10 && pConfig->nPicStruct == MFX_PICSTRUCT_PROGRESSIVE)))
+    {
+        fprintf(stderr, "ERROR: Invalid BRC parameters\n");
         sts = MFX_ERR_UNSUPPORTED;
     }
 

@@ -26,11 +26,11 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #endif
 
 #ifndef MSDK_MINOR
-#define MSDK_MINOR 0
+#define MSDK_MINOR 2
 #endif
 
 #ifndef MSDK_RELEASE
-#define MSDK_RELEASE 24
+#define MSDK_TARGETAPIMINOR 25
 #endif
 
 #ifndef MSDK_BUILD
@@ -40,6 +40,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 static msdk_string GetMSDKSampleVersion()
 {
     msdk_stringstream ss;
-    ss << MSDK_MAJOR << "." << MSDK_MINOR << "." << MSDK_RELEASE << "." << MSDK_BUILD;
+    ss << MSDK_MAJOR << "." << MSDK_MINOR << "." << MSDK_TARGETAPIMINOR << "." << MSDK_BUILD;
     return ss.str();
 }

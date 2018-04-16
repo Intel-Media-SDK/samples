@@ -51,18 +51,7 @@ struct msdkOutputSurface
  * normal circumstances. Macro should be used where check in release mode is not
  * desirable and atually needed.
  */
-#if 0 //_DEBUG
-    #define MSDK_SELF_CHECK(C) \
-        { \
-            if (!(C)) { \
-                msdk_printf(MSDK_STRING("bug: %s:%d: self-check failed: '%s' is not true\n"), \
-                    __FILE__, __LINE__, #C); \
-                exit(-1); \
-            } \
-        }
-#else
     #define MSDK_SELF_CHECK(C)
-#endif
 
 class CBuffering;
 

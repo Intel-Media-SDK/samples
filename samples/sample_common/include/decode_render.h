@@ -28,7 +28,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <dxva2api.h>
 #include <dxva.h>
 #include <windows.h>
-#include "igfx_s3dcontrol.h"
 #endif
 
 #include "mfxstructures.h"

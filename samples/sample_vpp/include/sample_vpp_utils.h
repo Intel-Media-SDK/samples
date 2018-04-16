@@ -166,6 +166,9 @@ struct sInputParams
     bool     bScaling;
     mfxU16   scalingMode;
 
+    bool     bChromaSiting;
+    mfxU16   uChromaSiting;
+
     bool     bInitEx;
     mfxU16   GPUCopyValue;
 
@@ -195,7 +198,6 @@ struct sInputParams
 
     msdk_char  strPerfFile[MSDK_MAX_FILENAME_LEN];
     mfxU32  forcedOutputFourcc;
-    bool  isInI420;
 
     /* Use extended API (RunFrameVPPAsyncEx) */
     bool  use_extapi;
@@ -205,10 +207,10 @@ struct sInputParams
 
     sOwnFrameInfo inFrameInfo[MAX_INPUT_STREAMS];
     mfxU16        numStreams;
-    sOwnFrameInfo outFrameInfo;
 
     sCompositionParam   compositionParam;
 
+    mfxU32  fccSource;
     sInputParams()
     {
         IOPattern=0;
@@ -227,14 +229,12 @@ struct sInputParams
         ptsAdvanced=false;
         ptsFR=0;
         forcedOutputFourcc=0;
-        isInI420 = false;
         numStreams=0;
 
         MSDK_ZERO_MEMORY(strPlgGuid);
         MSDK_ZERO_MEMORY(strSrcFile);
         MSDK_ZERO_MEMORY(strPerfFile);
         MSDK_ZERO_MEMORY(inFrameInfo);
-        MSDK_ZERO_MEMORY(outFrameInfo);
         MSDK_ZERO_MEMORY(compositionParam);
         MSDK_ZERO_MEMORY(roiCheckParam);
 
@@ -246,6 +246,9 @@ struct sInputParams
         MSDK_ZERO_MEMORY(strSrcFile);
         MSDK_ZERO_MEMORY(strPerfFile);
         strDstFiles.clear();
+        uChromaSiting = 0;
+        bChromaSiting = false;
+        fccSource = 0;
     }
 };
 
@@ -303,7 +306,7 @@ public :
     mfxStatus  Init(
         const msdk_char *strFileName,
         PTSMaker *pPTSMaker,
-        bool inI420 = false);
+        mfxU32 fcc);
 
     mfxStatus  PreAllocateFrameChunk(
         mfxVideoParam* pVideoParam,
@@ -330,7 +333,7 @@ private:
     mfxU16                                m_Repeat;
 
     PTSMaker                             *m_pPTSMaker;
-    bool m_inI420;
+    mfxU32                                m_initFcc;
 };
 
 class CRawVideoWriter
@@ -435,6 +438,9 @@ struct sAppResources
     mfxExtVPPDenoise    denoiseConfig;
     mfxExtVPPRotation   rotationConfig;
     mfxExtVPPScaling    scalingConfig;
+#ifdef ENABLE_FF
+    mfxExtColorConversion    chromaSitingConfig;
+#endif
     mfxExtVPPFrameRateConversion    frcConfig;
     mfxExtVPPDeinterlacing deinterlaceConfig;
     mfxExtVPPVideoSignalInfo  videoSignalInfoConfig;

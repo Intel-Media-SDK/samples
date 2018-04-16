@@ -228,6 +228,10 @@ public:
     {
     }
 
+    virtual ~RefCounter()
+    {
+    }
+
     void IncrementReference() const
     {
         m_refCounter++;

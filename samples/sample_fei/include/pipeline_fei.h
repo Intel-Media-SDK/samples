@@ -34,6 +34,8 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include "mfx_itt_trace.h"
 
+#include "brc_routines.h"
+
 /* This class implements a FEI pipeline */
 class CEncodingPipeline
 {
@@ -79,6 +81,7 @@ protected:
     mfxU16 m_maxQueueLength;
     mfxU16 m_log2frameNumMax;
     mfxU32 m_frameCount;
+    mfxU32 m_frameCountInEncodedOrder;
     mfxU32 m_frameOrderIdrInDisplayOrder;
     PairU8 m_frameType;
 
@@ -110,6 +113,9 @@ protected:
     MFX_VppInterface*    m_pVPP;
     MFX_DecodeInterface* m_pDECODE;
     YUVreader*           m_pYUVReader;
+#if (MFX_VERSION >= 1024)
+    ExtBRC               m_BRC;
+#endif
 
     MFXFrameAllocator*  m_pMFXAllocator;
     mfxAllocatorParams* m_pmfxAllocatorParams;

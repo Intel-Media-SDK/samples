@@ -104,8 +104,13 @@ function( configure_build_variant_linux target variant )
     target_link_libraries( ${ARGV0} va ${MDF_LIBS} )
 
   elseif( ARGV1 MATCHES universal )
-
-    append_property( ${ARGV0} COMPILE_FLAGS "-DMFX_VA -DLIBVA_SUPPORT -DLIBVA_DRM_SUPPORT -DLIBVA_X11_SUPPORT" )
+    if(ENABLE_X11)
+      append_property( ${ARGV0} COMPILE_FLAGS "-DLIBVA_X11_SUPPORT" )
+    endif()
+    if(ENABLE_DRM)
+      append_property( ${ARGV0} COMPILE_FLAGS "-DLIBVA_DRM_SUPPORT" )
+    endif()
+    append_property( ${ARGV0} COMPILE_FLAGS "-DMFX_VA -DLIBVA_SUPPORT" )
     append_property( ${ARGV0} COMPILE_FLAGS "${PKG_LIBDRM_CFLAGS} ${PKG_LIBVA_CFLAGS} ${PKG_LIBVA_DRM_CFLAGS} ${PKG_LIBVA_X11_CFLAGS} ${PKG_X11_CFLAGS}" )
 
   elseif( ARGV1 MATCHES drm )

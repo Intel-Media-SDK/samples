@@ -94,7 +94,7 @@ mfxStatus CD3D11Device::Init(
     if (FAILED(hres))
         return MFX_ERR_DEVICE_FAILED;
 
-    if (m_nViews == 2 && hWindow)
+    if (m_nViews == 2)
     {
         hres = m_pDXGIFactory->QueryInterface(__uuidof(IDXGIDisplayControl), (void **)&m_pDisplayControl);
         if (FAILED(hres))
@@ -216,8 +216,18 @@ mfxStatus CD3D11Device::Reset()
         reinterpret_cast<IDXGISwapChain1**>(&m_pSwapChain));
 
     if (FAILED(hres))
-        return MFX_ERR_DEVICE_FAILED;
+    {
+        if (swapChainDesc.Stereo)
+        {
+            MSDK_PRINT_RET_MSG(MFX_ERR_DEVICE_FAILED,"Cannot create swap chain required for rendering. Possibly stereo mode is not supported.");
+        }
+        else
+        {
+            MSDK_PRINT_RET_MSG(MFX_ERR_DEVICE_FAILED, "Cannot create swap chain required for rendering.");
+        }
 
+        return MFX_ERR_DEVICE_FAILED;
+    }
     return MFX_ERR_NONE;
 }
 

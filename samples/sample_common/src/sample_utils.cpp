@@ -23,6 +23,7 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <map>
 
 #include "vm/strings_defs.h"
 #include "time_statistics.h"
@@ -1386,20 +1387,31 @@ mfxU16 CalculateDefaultBitrate(mfxU32 nCodecId, mfxU32 nTargetUsage, mfxU32 nWid
     return (mfxU16)bitrate;
 }
 
-mfxU16 StrToTargetUsage(msdk_char* strInput)
+mfxU16 StrToTargetUsage(msdk_string strInput)
 {
-    mfxU16 tu = MFX_TARGETUSAGE_BALANCED;
+    std::map<msdk_string, mfxU16> tu;
+    tu[MSDK_STRING("quality")] =  (mfxU16)MFX_TARGETUSAGE_1;
+    tu[MSDK_STRING("veryslow")] = (mfxU16)MFX_TARGETUSAGE_1;
+    tu[MSDK_STRING("slower")] =   (mfxU16)MFX_TARGETUSAGE_2;
+    tu[MSDK_STRING("slow")] =     (mfxU16)MFX_TARGETUSAGE_3;
+    tu[MSDK_STRING("medium")] =   (mfxU16)MFX_TARGETUSAGE_4;
+    tu[MSDK_STRING("balanced")] = (mfxU16)MFX_TARGETUSAGE_4;
+    tu[MSDK_STRING("fast")] =     (mfxU16)MFX_TARGETUSAGE_5;
+    tu[MSDK_STRING("faster")] =   (mfxU16)MFX_TARGETUSAGE_6;
+    tu[MSDK_STRING("veryfast")] = (mfxU16)MFX_TARGETUSAGE_7;
+    tu[MSDK_STRING("speed")] =    (mfxU16)MFX_TARGETUSAGE_7;
+    tu[MSDK_STRING("1")] =        (mfxU16)MFX_TARGETUSAGE_1;
+    tu[MSDK_STRING("2")] =        (mfxU16)MFX_TARGETUSAGE_2;
+    tu[MSDK_STRING("3")] =        (mfxU16)MFX_TARGETUSAGE_3;
+    tu[MSDK_STRING("4")] =        (mfxU16)MFX_TARGETUSAGE_4;
+    tu[MSDK_STRING("5")] =        (mfxU16)MFX_TARGETUSAGE_5;
+    tu[MSDK_STRING("6")] =        (mfxU16)MFX_TARGETUSAGE_6;
+    tu[MSDK_STRING("7")] =        (mfxU16)MFX_TARGETUSAGE_7;
 
-    if (0 == msdk_strcmp(strInput, MSDK_STRING("quality")))
-    {
-        tu = MFX_TARGETUSAGE_BEST_QUALITY;
-    }
-    else if (0 == msdk_strcmp(strInput, MSDK_STRING("speed")))
-    {
-        tu = MFX_TARGETUSAGE_BEST_SPEED;
-    }
-
-    return tu;
+    if (tu.find(strInput) == tu.end())
+        return 0;
+    else
+        return tu[strInput];
 }
 
 const msdk_char* TargetUsageToStr(mfxU16 tu)
@@ -1743,6 +1755,49 @@ void ConfigureAspectRatioConversion(mfxInfoVPP* pVppInfo)
     }
 }
 
+void SEICalcSizeType(std::vector<mfxU8>& data, mfxU16 type, mfxU32 size)
+{
+    mfxU32 B = type;
+
+    while (B > 255)
+    {
+        data.push_back(255);
+        B -= 255;
+    }
+    data.push_back(mfxU8(B));
+
+    B = size;
+
+    while (B > 255)
+    {
+        data.push_back(255);
+        B -= 255;
+    }
+    data.push_back(mfxU8(B));
+}
+
+mfxU8 Char2Hex(msdk_char ch)
+{
+    msdk_char value = ch;
+    if(value >= MSDK_CHAR('0') && value <= MSDK_CHAR('9'))
+    {
+        value -= MSDK_CHAR('0');
+    }
+    else if (value >= MSDK_CHAR('a') && value <= MSDK_CHAR('f'))
+    {
+        value = value - MSDK_CHAR('a') + 10;
+    }
+    else if (value >= MSDK_CHAR('A') && value <= MSDK_CHAR('F'))
+    {
+        value = value - MSDK_CHAR('A') + 10;
+    }
+    else
+    {
+        value = 0;
+    }
+    return (mfxU8)value;
+}
+
 namespace {
     int g_trace_level = MSDK_TRACE_LEVEL_INFO;
 }
@@ -1885,7 +1940,6 @@ bool IsDecodeCodecSupported(mfxU32 codecFormat)
         case MFX_CODEC_JPEG:
         case MFX_CODEC_VP8:
         case MFX_CODEC_VP9:
-        case MFX_CODEC_CAPTURE:
         break;
     default:
         return false;
@@ -1920,7 +1974,6 @@ bool IsPluginCodecSupported(mfxU32 codecFormat)
         case MFX_CODEC_VC1:
         case MFX_CODEC_VP8:
         case MFX_CODEC_VP9:
-        case MFX_CODEC_CAPTURE:
         break;
     default:
         return false;
@@ -1969,10 +2022,6 @@ mfxStatus StrFormatToCodecFormatFourCC(msdk_char* strInput, mfxU32 &codecFormat)
         else if (0 == msdk_strcmp(strInput, MSDK_STRING("vp9")))
         {
             codecFormat = MFX_CODEC_VP9;
-        }
-        else if (0 == msdk_strcmp(strInput, MSDK_STRING("capture")))
-        {
-            codecFormat = MFX_CODEC_CAPTURE;
         }
         else if ((0 == msdk_strcmp(strInput, MSDK_STRING("raw"))))
         {
@@ -2289,6 +2338,9 @@ mfxU16 FourCCToChroma(mfxU32 fourCC)
         return MFX_CHROMAFORMAT_YUV420;
     case MFX_FOURCC_NV16:
     case MFX_FOURCC_P210:
+#ifdef ENABLE_PS
+    case MFX_FOURCC_Y210:
+#endif
     case MFX_FOURCC_YUY2:
         return MFX_CHROMAFORMAT_YUV422;
     case MFX_FOURCC_RGB4:
@@ -2297,4 +2349,3 @@ mfxU16 FourCCToChroma(mfxU32 fourCC)
 
     return MFX_CHROMAFORMAT_YUV420;
 }
-

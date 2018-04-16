@@ -98,6 +98,12 @@ static
         return MSDK_STRING("AYUV");
     case MFX_FOURCC_I420:
         return MSDK_STRING("I420");
+#ifdef ENABLE_PS
+    case MFX_FOURCC_Y210:
+        return MSDK_STRING("Y210");
+    case MFX_FOURCC_Y410:
+        return MSDK_STRING("Y410");
+#endif
     default:
         return MSDK_STRING("Unknown");
     }
@@ -168,6 +174,9 @@ void PrintInfo(sInputParams* pParams, mfxVideoParam* pMfxParams, MFXVideoSession
     msdk_printf(MSDK_STRING("Deinterlace\t%s\n"), (pParams->frameInfoIn[0].PicStruct != pParams->frameInfoOut[0].PicStruct) ? MSDK_STRING("ON"): MSDK_STRING("OFF"));
     msdk_printf(MSDK_STRING("Signal info\t%s\n"),   (VPP_FILTER_DISABLED != pParams->videoSignalInfoParam[0].mode) ? MSDK_STRING("ON"): MSDK_STRING("OFF"));
     msdk_printf(MSDK_STRING("Scaling\t\t%s\n"),     (VPP_FILTER_DISABLED != pParams->bScaling) ? MSDK_STRING("ON"): MSDK_STRING("OFF"));
+#ifdef ENABLE_FF
+    msdk_printf(MSDK_STRING("CromaSiting\t\t%s\n"), (VPP_FILTER_DISABLED != pParams->bChromaSiting) ? MSDK_STRING("ON") : MSDK_STRING("OFF"));
+#endif
     msdk_printf(MSDK_STRING("Denoise\t\t%s\n"),     (VPP_FILTER_DISABLED != pParams->denoiseParam[0].mode) ? MSDK_STRING("ON"): MSDK_STRING("OFF"));
 
     msdk_printf(MSDK_STRING("ProcAmp\t\t%s\n"),     (VPP_FILTER_DISABLED != pParams->procampParam[0].mode) ? MSDK_STRING("ON"): MSDK_STRING("OFF"));
@@ -282,15 +291,18 @@ mfxStatus ParseGUID(msdk_char strPlgGuid[MSDK_MAX_FILENAME_LEN], mfxU8 DataGUID[
 
     return MFX_ERR_NONE;
 }
+
 mfxStatus InitParamsVPP(mfxVideoParam* pParams, sInputParams* pInParams, mfxU32 paramID)
 {
     MSDK_CHECK_POINTER(pParams,    MFX_ERR_NULL_PTR);
     MSDK_CHECK_POINTER(pInParams,  MFX_ERR_NULL_PTR);
 
-    if (pInParams->frameInfoIn[paramID].nWidth == 0 || pInParams->frameInfoIn[paramID].nHeight == 0 ){
+    if (pInParams->compositionParam.mode != VPP_FILTER_ENABLED_CONFIGURED && (pInParams->frameInfoIn[paramID].nWidth == 0 || pInParams->frameInfoIn[paramID].nHeight == 0)){
+        vppPrintHelp(MSDK_STRING("sample_vpp"), MSDK_STRING("ERROR: Source width is not defined.\n"));
         return MFX_ERR_UNSUPPORTED;
     }
     if (pInParams->frameInfoOut[paramID].nWidth == 0 || pInParams->frameInfoOut[paramID].nHeight == 0 ){
+        vppPrintHelp(MSDK_STRING("sample_vpp"), MSDK_STRING("ERROR: Source height is not defined.\n"));
         return MFX_ERR_UNSUPPORTED;
     }
 
@@ -803,10 +815,10 @@ CRawVideoReader::CRawVideoReader()
     m_isPerfMode = false;
     m_Repeat = 0;
     m_pPTSMaker = 0;
-    m_inI420=false;
+    m_initFcc = 0;
 }
 
-mfxStatus CRawVideoReader::Init(const msdk_char *strFileName, PTSMaker *pPTSMaker, bool inI420)
+mfxStatus CRawVideoReader::Init(const msdk_char *strFileName, PTSMaker *pPTSMaker, mfxU32 fcc)
 {
     Close();
 
@@ -816,8 +828,7 @@ mfxStatus CRawVideoReader::Init(const msdk_char *strFileName, PTSMaker *pPTSMake
     MSDK_CHECK_POINTER(m_fSrc, MFX_ERR_ABORTED);
 
     m_pPTSMaker = pPTSMaker;
-    m_inI420=inI420;
-
+    m_initFcc = fcc;
     return MFX_ERR_NONE;
 }
 
@@ -841,6 +852,14 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
 {
     MSDK_CHECK_POINTER(pData, MFX_ERR_NOT_INITIALIZED);
     MSDK_CHECK_POINTER(pInfo, MFX_ERR_NOT_INITIALIZED);
+
+    // Only (I420|YV12) -> NV12 in-place conversion supported
+    if (pInfo->FourCC != m_initFcc &&
+        (pInfo->FourCC != MFX_FOURCC_NV12 ||
+        (m_initFcc != MFX_FOURCC_I420 && m_initFcc != MFX_FOURCC_YV12) ) )
+    {
+        return MFX_ERR_INVALID_VIDEO_PARAM;
+    }
 
     mfxU32 w, h, i, pitch;
     mfxU32 nBytesRead;
@@ -874,14 +893,14 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
         h     >>= 1;
         pitch >>= 1;
         // load U/V
-        ptr = (pInfo->FourCC == MFX_FOURCC_I420 || m_inI420 ? pData->U : pData->V) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        ptr = (pInfo->FourCC == MFX_FOURCC_I420 ? pData->U : pData->V) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
         // load V/U
-        ptr  = (pInfo->FourCC == MFX_FOURCC_I420 || m_inI420 ? pData->V : pData->U) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
+        ptr  = (pInfo->FourCC == MFX_FOURCC_I420 ? pData->V : pData->U) + (pInfo->CropX >> 1) + (pInfo->CropY >> 1) * pitch;
         for(i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
@@ -1009,24 +1028,84 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
     }
-    else if( pInfo->FourCC == MFX_FOURCC_NV12 )
+    else if (pInfo->FourCC == MFX_FOURCC_NV12)
     {
         ptr = pData->Y + pInfo->CropX + pInfo->CropY * pitch;
 
         // read luminance plane
-        for(i = 0; i < h; i++)
+        for (i = 0; i < h; i++)
         {
             nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
         }
 
-        // load UV
-        h     >>= 1;
-        ptr = pData->UV + pInfo->CropX + (pInfo->CropY >> 1) * pitch;
-        for (i = 0; i < h; i++)
+        switch (m_initFcc)
         {
-            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
-            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+            case MFX_FOURCC_NV12:
+            {
+                // load UV
+                h >>= 1;
+                ptr = pData->UV + pInfo->CropX + (pInfo->CropY >> 1) * pitch;
+                for (i = 0; i < h; i++)
+                {
+                    nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, w, m_fSrc);
+                    IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, w, MFX_ERR_MORE_DATA);
+                }
+                break;
+            }
+            case MFX_FOURCC_I420:
+            case MFX_FOURCC_YV12:
+            {
+                mfxU8 buf[2048]; // maximum supported chroma width for nv12
+                mfxU32 j, dstOffset[2];
+                w /= 2;
+                h /= 2;
+                ptr = pData->UV + pInfo->CropX + (pInfo->CropY / 2) * pitch;
+                if (w > 2048)
+                {
+                    return MFX_ERR_UNSUPPORTED;
+                }
+
+                if (m_initFcc == MFX_FOURCC_I420) {
+                    dstOffset[0] = 0;
+                    dstOffset[1] = 1;
+                }
+                else {
+                    dstOffset[0] = 1;
+                    dstOffset[1] = 0;
+                }
+
+                // load first chroma plane: U (input == I420) or V (input == YV12)
+                for (i = 0; i < h; i++)
+                {
+                    nBytesRead = (mfxU32)fread(buf, 1, w, m_fSrc);
+                    if (w != nBytesRead)
+                    {
+                        return MFX_ERR_MORE_DATA;
+                    }
+                    for (j = 0; j < w; j++)
+                    {
+                        ptr[i * pitch + j * 2 + dstOffset[0]] = buf[j];
+                    }
+                }
+
+                // load second chroma plane: V (input == I420) or U (input == YV12)
+                for (i = 0; i < h; i++)
+                {
+
+                    nBytesRead = (mfxU32)fread(buf, 1, w, m_fSrc);
+
+                    if (w != nBytesRead)
+                    {
+                        return MFX_ERR_MORE_DATA;
+                    }
+                    for (j = 0; j < w; j++)
+                    {
+                        ptr[i * pitch + j * 2 + dstOffset[1]] = buf[j];
+                    }
+                }
+                break;
+            }
         }
     }
     else if( pInfo->FourCC == MFX_FOURCC_NV16 )
@@ -1178,6 +1257,28 @@ mfxStatus CRawVideoReader::LoadNextFrame(mfxFrameData* pData, mfxFrameInfo* pInf
             IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
         }
     }
+#ifdef ENABLE_PS
+    else if (pInfo->FourCC == MFX_FOURCC_Y210)
+    {
+        ptr = (mfxU8*)pData->Y16 + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
+            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+        }
+    }
+    else if (pInfo->FourCC == MFX_FOURCC_Y410)
+    {
+        ptr = (mfxU8*)pData->Y410 + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            nBytesRead = (mfxU32)fread(ptr + i * pitch, 1, 4*w, m_fSrc);
+            IOSTREAM_MSDK_CHECK_NOT_EQUAL(nBytesRead, 4*w, MFX_ERR_MORE_DATA);
+        }
+    }
+#endif
     else
     {
         return MFX_ERR_UNSUPPORTED;
@@ -1735,6 +1836,26 @@ mfxStatus CRawVideoWriter::WriteFrame(
             MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
         }
     }
+#ifdef ENABLE_PS
+    else if( pInfo->FourCC == MFX_FOURCC_Y210)
+    {
+        ptr = pData->Y + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr+ i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
+        }
+    }
+    else if (pInfo->FourCC == MFX_FOURCC_Y410)
+    {
+        ptr = (mfxU8*)pData->Y410 + pInfo->CropX + pInfo->CropY * pitch;
+
+        for(i = 0; i < h; i++)
+        {
+            MSDK_CHECK_NOT_EQUAL( fwrite(ptr + i * pitch, 1, 4*w, m_fDst), 4u*w, MFX_ERR_UNDEFINED_BEHAVIOR);
+        }
+    }
+#endif
     else
     {
         return MFX_ERR_UNSUPPORTED;

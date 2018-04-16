@@ -60,7 +60,11 @@ msdk_printf(MSDK_STRING("   [-scrY  y]                  - cropY  of src video (d
 msdk_printf(MSDK_STRING("   [-scrW  w]                  - cropW  of src video (def: width)\n"));
 msdk_printf(MSDK_STRING("   [-scrH  h]                  - cropH  of src video (def: height)\n"));
 msdk_printf(MSDK_STRING("   [-sf   frameRate]           - frame rate of src video (def: 30.0)\n"));
+#ifdef ENABLE_PS
+msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support i420|nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv|y210|y410)\n"));
+#else
 msdk_printf(MSDK_STRING("   [-scc  format]              - format (FourCC) of src video (def: nv12. support i420|nv12|yv12|yuy2|rgb3|rgb4|imc3|yuv400|yuv411|yuv422h|yuv422v|yuv444|uyvy|ayuv)\n"));
+#endif
 msdk_printf(MSDK_STRING("   [-sbitshift 0|1]            - shift data to right or keep it the same way as in Microsoft's P010\n"));
 msdk_printf(MSDK_STRING("   [-sbitdepthluma value]      - shift luma channel to right to \"16 - value\" bytes\n"));
 msdk_printf(MSDK_STRING("   [-sbitdepthchroma value]    - shift chroma channel to right to \"16 - value\" bytes\n"));
@@ -79,7 +83,11 @@ msdk_printf(MSDK_STRING("   [-dcrY  y]                  - cropY  of dst video (d
 msdk_printf(MSDK_STRING("   [-dcrW  w]                  - cropW  of dst video (def: width)\n"));
 msdk_printf(MSDK_STRING("   [-dcrH  h]                  - cropH  of dst video (def: height)\n"));
 msdk_printf(MSDK_STRING("   [-df  frameRate]            - frame rate of dst video (def: 30.0)\n"));
+#ifdef ENABLE_PS
+msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support i420|nv12|yuy2|rgb4|yv12|ayuv|y210|y410)\n"));
+#else
 msdk_printf(MSDK_STRING("   [-dcc format]               - format (FourCC) of dst video (def: nv12. support i420|nv12|yuy2|rgb4|yv12|ayuv)\n"));
+#endif
 msdk_printf(MSDK_STRING("   [-dbitshift 0|1]            - shift data to right or keep it the same way as in Microsoft's P010\n"));
 msdk_printf(MSDK_STRING("   [-dbitdepthluma value]      - shift luma channel to left to \"16 - value\" bytes\n"));
 msdk_printf(MSDK_STRING("   [-dbitdepthchroma value]    - shift chroma channel to left to \"16 - value\" bytes\n"));
@@ -161,6 +169,9 @@ msdk_printf(MSDK_STRING("                         type is tff (default) or bff \
 msdk_printf(MSDK_STRING("   [-rotate (angle)]   - enable rotation. Supported angles: 0, 90, 180, 270.\n"));
 msdk_printf(MSDK_STRING("   [-scaling_mode (mode)] - specify type of scaling to be used for resize.\n"));
 msdk_printf(MSDK_STRING("   [-denoise (level)]  - enable denoise algorithm. Level is optional \n"));
+#ifdef ENABLE_FF
+msdk_printf(MSDK_STRING("   [-chroma_siting (vmode hmode)] - specify chroma siting mode for VPP color conversion, allowed values: vtop|vcen|vbot hleft|hcen\n"));
+#endif
 msdk_printf(MSDK_STRING("                         range of  noise level is [0, 100]\n"));
 msdk_printf(MSDK_STRING("   [-detail  (level)]  - enable detail enhancement algorithm. Level is optional \n"));
 msdk_printf(MSDK_STRING("                         range of detail level is [0, 100]\n\n"));
@@ -1018,6 +1029,32 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
                 pParams->bScaling = true;
                 msdk_sscanf(strInput[i], MSDK_STRING("%hu"), &pParams->scalingMode);
             }
+#ifdef ENABLE_FF
+            else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-chroma_siting")))
+            {
+                VAL_CHECK(2 + i == nArgNum);
+                bool bVfound = false;
+                bool bHfound = false;
+                i++;
+                for (int ii = 0; ii < 2; ii++)
+                {
+                    /* ChromaSiting */
+                    if (msdk_strcmp(strInput[i + ii], MSDK_STRING("vtop")) == 0) { pParams->uChromaSiting |= MFX_CHROMA_SITING_VERTICAL_TOP; bVfound = true; }
+                    else if (msdk_strcmp(strInput[i + ii], MSDK_STRING("vcen")) == 0) { pParams->uChromaSiting |= MFX_CHROMA_SITING_VERTICAL_CENTER; bVfound = true; }
+                    else if (msdk_strcmp(strInput[i + ii], MSDK_STRING("vbot")) == 0) { pParams->uChromaSiting |= MFX_CHROMA_SITING_VERTICAL_BOTTOM; bVfound = true; }
+                    else if (msdk_strcmp(strInput[i + ii], MSDK_STRING("hleft")) == 0) { pParams->uChromaSiting |= MFX_CHROMA_SITING_HORIZONTAL_LEFT; bHfound = true; }
+                    else if (msdk_strcmp(strInput[i + ii], MSDK_STRING("hcen")) == 0) { pParams->uChromaSiting |= MFX_CHROMA_SITING_HORIZONTAL_CENTER; bHfound = true; }
+                    else msdk_strcmp(MSDK_STRING("Unknown Chroma siting flag %s"), strInput[i + ii]);
+                }
+                pParams->bChromaSiting = bVfound && bHfound;
+                if (!pParams->bChromaSiting)
+                {
+                    vppPrintHelp(strInput[0], MSDK_STRING("Invalid chroma siting flags\n"));
+                    return MFX_ERR_UNSUPPORTED;
+                }
+                i++;
+            }
+#endif
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-composite")))
             {
                 if( i+1 < nArgNum )
@@ -1214,13 +1251,13 @@ mfxStatus vppParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams
             {
                 VAL_CHECK(1 + i == nArgNum);
                 i++;
-                pParams->frameInfoIn[0].FourCC = Str2FourCC( strInput[i] );
-                pParams->isInI420 = false;
-                if (MFX_FOURCC_I420 == pParams->frameInfoIn[0].FourCC)
-                {
-                    pParams->frameInfoIn[0].FourCC = MFX_FOURCC_YV12; // I420 input is implemented using YV12 internally
-                    pParams->isInI420 = true;
-                }
+                pParams->fccSource = pParams->frameInfoIn[0].FourCC
+                    = Str2FourCC(strInput[i]);
+
+                //if (MFX_FOURCC_I420 == pParams->frameInfoIn[0].FourCC)
+                //{
+                //    pParams->frameInfoIn[0].FourCC = MFX_FOURCC_YV12; // I420 input is implemented using YV12 internally
+                //}
 
             }
             else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-dcc")))
@@ -1471,6 +1508,32 @@ return MFX_ERR_NONE;
 
 bool CheckInputParams(msdk_char* strInput[], sInputParams* pParams )
 {
+    // Setting  default width and height if it was omitted. For composition case parameters should be define explicitely
+    if (pParams->frameInfoOut[0].nWidth == 0)
+    {
+        if (pParams->compositionParam.mode == VPP_FILTER_ENABLED_CONFIGURED)
+        {
+            vppPrintHelp(strInput[0], MSDK_STRING("ERROR: Destination width should be set explicitely in case of composition mode.\n"));
+            return false;
+        }
+        pParams->frameInfoOut[0].nWidth = pParams->frameInfoIn[0].nWidth;
+        pParams->frameInfoOut[0].CropW = pParams->frameInfoIn[0].CropW;
+        pParams->frameInfoOut[0].CropX = 0;
+    }
+
+    if (pParams->frameInfoOut[0].nHeight == 0)
+    {
+        if (pParams->compositionParam.mode == VPP_FILTER_ENABLED_CONFIGURED)
+        {
+            vppPrintHelp(strInput[0], MSDK_STRING("ERROR: Destination height should be set explicitely in case of composition mode.\n"));
+            return false;
+        }
+        pParams->frameInfoOut[0].nHeight = pParams->frameInfoIn[0].nHeight;
+        pParams->frameInfoOut[0].CropH = pParams->frameInfoIn[0].CropH;
+        pParams->frameInfoOut[0].CropY = 0;
+    }
+
+    // Checking other parameters
     if (0 == pParams->asyncNum)
     {
         vppPrintHelp(strInput[0], MSDK_STRING("Incompatible parameters: [ayncronous number must exceed 0]\n"));
@@ -1482,6 +1545,18 @@ bool CheckInputParams(msdk_char* strInput[], sInputParams* pParams )
         if (pParams->rotate[i] != 0 && pParams->rotate[i] != 90 && pParams->rotate[i] != 180 && pParams->rotate[i] != 270)
         {
             vppPrintHelp(strInput[0], MSDK_STRING("Invalid -rotate parameter: supported values 0, 90, 180, 270\n"));
+            return false;
+        }
+    }
+
+    for (mfxU32 i = 0; i < pParams->numStreams; i++)
+    {
+        const mfxVPPCompInputStream& is = pParams->compositionParam.streamInfo[i].compStream;
+
+        if ((pParams->frameInfoOut[0].nWidth < is.DstW + is.DstX) ||
+            (pParams->frameInfoOut[0].nHeight < is.DstH + is.DstY))
+        {
+            vppPrintHelp(strInput[0], MSDK_STRING("One of composing frames cannot fit into destination frame.\n"));
             return false;
         }
     }
@@ -1648,24 +1723,7 @@ mfxStatus ParseCompositionParfile(const msdk_char* parFileName, sInputParams* pP
             pParams->inFrameInfo[nStreamInd].PicStruct = MFX_PICSTRUCT_PROGRESSIVE;
         }
     }
-    if (pParams->inFrameInfo[0].nWidth > pParams->inFrameInfo[0].CropW)
-    {
-        /* This case means alignment for Width was done */
-        pParams->outFrameInfo.nWidth = pParams->inFrameInfo[0].CropW;
-    }
-    else
-    {
-        pParams->outFrameInfo.nWidth = pParams->inFrameInfo[0].nWidth;
-    }
-    if (pParams->inFrameInfo[0].nHeight > pParams->inFrameInfo[0].CropH)
-    {
-        /* This case means alignment for Height was done */
-        pParams->outFrameInfo.nHeight = pParams->inFrameInfo[0].CropH;
-    }
-    else
-    {
-        pParams->outFrameInfo.nHeight = pParams->inFrameInfo[0].nHeight;
-    }
+
     pParams->numStreams = nStreamInd + 1;
 
     for(int i=0;i<pParams->numStreams;i++)

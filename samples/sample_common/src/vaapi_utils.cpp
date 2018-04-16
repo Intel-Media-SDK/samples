@@ -38,7 +38,13 @@ namespace MfxLoader
 
 SimpleLoader::SimpleLoader(const char * name)
 {
+    dlerror();
     so_handle = dlopen(name, RTLD_GLOBAL | RTLD_NOW);
+    if (NULL == so_handle)
+    {
+        std::cerr << dlerror() << std::endl;
+        throw std::runtime_error("Can't load library");
+    }
 }
 
 void * SimpleLoader::GetFunction(const char * name)
@@ -66,7 +72,11 @@ SimpleLoader::~SimpleLoader()
 
 #if defined(LIBVA_SUPPORT)
 VA_Proxy::VA_Proxy()
-    : lib("libva.so.1")
+#ifdef ANDROID
+    : lib("libva-android.so")
+#else
+    : lib("libva.so.2")
+#endif
     , SIMPLE_LOADER_FUNCTION(vaInitialize)
     , SIMPLE_LOADER_FUNCTION(vaTerminate)
     , SIMPLE_LOADER_FUNCTION(vaCreateSurfaces)
@@ -81,9 +91,12 @@ VA_Proxy::VA_Proxy()
     , SIMPLE_LOADER_FUNCTION(vaGetLibFunc)
     , SIMPLE_LOADER_FUNCTION(vaAcquireBufferHandle)
     , SIMPLE_LOADER_FUNCTION(vaReleaseBufferHandle)
-    , SIMPLE_LOADER_FUNCTION(vaCreateContext)
+    , SIMPLE_LOADER_FUNCTION(vaMaxNumEntrypoints)
+    , SIMPLE_LOADER_FUNCTION(vaQueryConfigEntrypoints)
     , SIMPLE_LOADER_FUNCTION(vaGetConfigAttributes)
     , SIMPLE_LOADER_FUNCTION(vaCreateConfig)
+    , SIMPLE_LOADER_FUNCTION(vaCreateContext)
+    , SIMPLE_LOADER_FUNCTION(vaDestroyConfig)
     , SIMPLE_LOADER_FUNCTION(vaDestroyContext)
 {
 }
@@ -137,7 +150,7 @@ DRM_Proxy::~DRM_Proxy()
 {}
 
 VA_DRMProxy::VA_DRMProxy()
-    : lib("libva-drm.so.1")
+    : lib("libva-drm.so.2")
     , SIMPLE_LOADER_FUNCTION(vaGetDisplayDRM)
 {
 }
@@ -201,7 +214,7 @@ VA_WaylandClientProxy::~VA_WaylandClientProxy()
 
 #if defined(LIBVA_X11_SUPPORT)
 VA_X11Proxy::VA_X11Proxy()
-    : lib("libva-x11.so.1")
+    : lib("libva-x11.so.2")
     , SIMPLE_LOADER_FUNCTION(vaGetDisplay)
     , SIMPLE_LOADER_FUNCTION(vaPutSurface)
 {

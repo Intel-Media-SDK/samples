@@ -89,7 +89,6 @@ inline mfxU16 FrameTypeToSliceType(mfxU8 frameType)
     }
 }
 
-#if MFX_VERSION >= 1023
 inline mfxU16 PicStructToFrameType(mfxU16 picstruct)
 {
     switch (picstruct & 0x0f)
@@ -113,7 +112,6 @@ inline mfxU16 PicStructToFrameTypeFieldBased(mfxU16 picstruct, mfxU16 is_interla
 {
     return mfxU16((!!(picstruct & MFX_PICSTRUCT_PROGRESSIVE) == is_interlaced) ? MFX_PICTYPE_UNKNOWN : (is_interlaced ? (parity ? MFX_PICTYPE_BOTTOMFIELD : MFX_PICTYPE_TOPFIELD) : MFX_PICTYPE_FRAME));
 }
-#endif // MFX_VERSION >= 1023
 
 enum
 {
@@ -287,6 +285,8 @@ struct AppConfig
         , refDist(1)             // Only I frames
         , gopSize(1)             // Only I frames
         , QP(26)
+        , RateControlMethod(MFX_RATECONTROL_CQP)
+        , TargetKbps(0)
         , numSlices(1)
         , numRef(1)              // One ref by default
         , NumRefActiveP(0)
@@ -356,6 +356,7 @@ struct AppConfig
         , bFieldProcessingMode(false)
         , bPerfMode(false)
         , bRawRef(false)
+        , bImplicitWPB(false)
         , mvinFile(NULL)
         , mbctrinFile(NULL)
         , mvoutFile(NULL)
@@ -363,6 +364,7 @@ struct AppConfig
         , mbstatoutFile(NULL)
         , mbQpFile(NULL)
         , repackctrlFile(NULL)
+        , repackstatFile(NULL)
         , decodestreamoutFile(NULL)
         , weightsFile(NULL)
     {
@@ -384,6 +386,9 @@ struct AppConfig
     mfxU16 refDist; //number of frames to next I,P
     mfxU16 gopSize; //number of frames to next I
     mfxU8  QP;
+    mfxU16 RateControlMethod;
+    mfxU16 TargetKbps;
+
     mfxU16 numSlices;
     mfxU16 numRef;           // number of reference frames (DPB size)
     mfxU16 NumRefActiveP;    // maximal number of references for P frames
@@ -465,6 +470,7 @@ struct AppConfig
     bool bFieldProcessingMode;
     bool bPerfMode;
     bool bRawRef;
+    bool bImplicitWPB;
     msdk_char* mvinFile;
     msdk_char* mbctrinFile;
     msdk_char* mvoutFile;
@@ -472,6 +478,7 @@ struct AppConfig
     msdk_char* mbstatoutFile;
     msdk_char* mbQpFile;
     msdk_char* repackctrlFile;
+    msdk_char* repackstatFile;
     msdk_char* decodestreamoutFile;
     msdk_char* weightsFile;
 

@@ -31,6 +31,11 @@ set( NOT_CONFIGURED "" CACHE INTERNAL "" )
 set( SKIPPING "" CACHE INTERNAL "" )
 set( BUILDING "" CACHE INTERNAL "" )
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
+
+append("-std=c++11 ${API_FLAGS}" CMAKE_CXX_FLAGS)
+
 create_build( )
 
 report_targets("The following targets were NOT configured:" "${NOT_CONFIGURED}")

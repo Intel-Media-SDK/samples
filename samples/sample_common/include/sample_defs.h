@@ -34,7 +34,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #if defined(WIN32) || defined(WIN64)
 
 enum {
-    MFX_HANDLE_GFXS3DCONTROL = 0x100, /* A handle to the IGFXS3DControl instance */
     MFX_HANDLE_DEVICEWINDOW  = 0x101 /* A handle to the render window */
 }; //mfxHandleType
 
@@ -110,9 +109,13 @@ enum LibVABackend
 #define MSDK_INVALID_SURF_IDX 0xFFFF
 
 #define MSDK_MAX_FILENAME_LEN 1024
+#define MSDK_MAX_USER_DATA_UNREG_SEI_LEN 80
 
 #define MSDK_PRINT_RET_MSG(ERR,MSG) {msdk_stringstream tmpStr1;tmpStr1<<std::endl<<"[ERROR], sts=" \
     <<StatusToString(ERR)<<"("<<ERR<<")"<<", "<<__FUNCTION__<<", "<<MSG<<" at "<<__FILE__<<":"<<__LINE__<<std::endl;msdk_err<<tmpStr1.str();}
+
+#define MSDK_PRINT_WRN_MSG(WRN,MSG) {msdk_stringstream tmpStr1;tmpStr1<<std::endl<<"[WARNING], sts=" \
+    <<StatusToString(WRN)<<"("<<WRN<<")"<<", "<<__FUNCTION__<<", "<<MSG<<" at "<<__FILE__<<":"<<__LINE__<<std::endl;msdk_err<<tmpStr1.str();}
 
 #define MSDK_TRACE_LEVEL(level, ERR) if (level <= msdk_trace_get_level()) {msdk_err<<NoFullPath(MSDK_STRING(__FILE__)) << MSDK_STRING(" :")<< __LINE__ <<MSDK_STRING(" [") \
     <<level<<MSDK_STRING("] ") << ERR << std::endl;}
@@ -129,7 +132,9 @@ enum LibVABackend
 #define MSDK_CHECK_NOT_EQUAL(P, X, ERR)          {if ((X) != (P)) {msdk_stringstream tmpStr3;tmpStr3<<MSDK_STRING(#X)<<MSDK_STRING("!=")<<MSDK_STRING(#P)<<MSDK_STRING(" error"); \
     MSDK_PRINT_RET_MSG(ERR, tmpStr3.str().c_str()); return ERR;}}
 
-#define MSDK_CHECK_STATUS(X, MSG)               {if ((X) < MFX_ERR_NONE) {MSDK_PRINT_RET_MSG(X, MSG); return X;}}
+#define MSDK_CHECK_STATUS(X, MSG)                {if ((X) < MFX_ERR_NONE) {MSDK_PRINT_RET_MSG(X, MSG); return X;}}
+#define MSDK_CHECK_STATUS_NO_RET(X, MSG)         {if ((X) < MFX_ERR_NONE) {MSDK_PRINT_RET_MSG(X, MSG);}}
+#define MSDK_CHECK_WRN(X, MSG)                   {if ((X) > MFX_ERR_NONE) {MSDK_PRINT_WRN_MSG(X, MSG);          }}
 #define MSDK_CHECK_PARSE_RESULT(P, X, ERR)       {if ((X) > (P)) {return ERR;}}
 
 #define MSDK_CHECK_STATUS_SAFE(X, FUNC, ADD)     {if ((X) < MFX_ERR_NONE) {ADD; MSDK_PRINT_RET_MSG(X, FUNC); return X;}}

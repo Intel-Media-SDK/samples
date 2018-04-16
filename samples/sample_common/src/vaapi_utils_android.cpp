@@ -33,8 +33,9 @@ typedef unsigned int vaapiAndroidDisplay;
 
 #define VAAPI_ANDROID_DEFAULT_DISPLAY 0x18c34078
 
-AndroidLibVA::AndroidLibVA(void):
-    m_display(NULL)
+AndroidLibVA::AndroidLibVA(void)
+    : CLibVA(MFX_LIBVA_AUTO)
+    , m_display(NULL)
 {
     VAStatus va_res = VA_STATUS_SUCCESS;
     mfxStatus sts = MFX_ERR_NONE;

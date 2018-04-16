@@ -27,6 +27,7 @@ mfxStatus CUserPipeline::InitRotateParam(sInputParams *pInParams)
     MSDK_CHECK_POINTER(pInParams, MFX_ERR_NULL_PTR);
 
     MSDK_ZERO_MEMORY(m_pluginVideoParams);
+
     m_pluginVideoParams.AsyncDepth = pInParams->nAsyncDepth; // the maximum number of tasks that can be submitted before any task execution finishes
     m_pluginVideoParams.vpp.In.FourCC = MFX_FOURCC_NV12;
     m_pluginVideoParams.vpp.In.Width = m_pluginVideoParams.vpp.In.CropW = pInParams->nWidth;
@@ -34,6 +35,15 @@ mfxStatus CUserPipeline::InitRotateParam(sInputParams *pInParams)
     m_pluginVideoParams.vpp.Out.FourCC = MFX_FOURCC_NV12;
     m_pluginVideoParams.vpp.Out.Width = m_pluginVideoParams.vpp.Out.CropW = pInParams->nWidth;
     m_pluginVideoParams.vpp.Out.Height = m_pluginVideoParams.vpp.Out.CropH = pInParams->nHeight;
+
+    if (pInParams->bOpenCL)
+    {
+        m_pluginVideoParams.vpp.In.Width = MSDK_ALIGN32(m_pluginVideoParams.vpp.In.CropW);
+        m_pluginVideoParams.vpp.In.Height = MSDK_ALIGN32(m_pluginVideoParams.vpp.In.CropH);
+        m_pluginVideoParams.vpp.Out.Width = MSDK_ALIGN32(m_pluginVideoParams.vpp.Out.CropW);
+        m_pluginVideoParams.vpp.Out.Height = MSDK_ALIGN32(m_pluginVideoParams.vpp.Out.CropH);
+    }
+
     if (pInParams->memType != SYSTEM_MEMORY)
         m_pluginVideoParams.IOPattern = MFX_IOPATTERN_IN_VIDEO_MEMORY | MFX_IOPATTERN_OUT_VIDEO_MEMORY;
 

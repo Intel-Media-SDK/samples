@@ -29,7 +29,6 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 #include "d3d_device.h"
 #include "d3d_allocator.h"
 #include "sample_defs.h"
-#include "igfx_s3dcontrol.h"
 
 #include "atlbase.h"
 
@@ -42,7 +41,6 @@ CD3D9Device::CD3D9Device()
     m_resetToken = 0;
 
     m_nViews = 0;
-    m_pS3DControl = NULL;
 
     MSDK_ZERO_MEMORY(m_backBufferDesc);
     m_pDXVAVPS = NULL;
@@ -285,7 +283,6 @@ void CD3D9Device::Close()
     MSDK_SAFE_RELEASE(m_pDeviceManager9);
     MSDK_SAFE_RELEASE(m_pD3DD9);
     MSDK_SAFE_RELEASE(m_pD3D9);
-    m_pS3DControl = NULL;
 }
 
 CD3D9Device::~CD3D9Device()
@@ -301,23 +298,12 @@ mfxStatus CD3D9Device::GetHandle(mfxHandleType type, mfxHDL *pHdl)
 
         return MFX_ERR_NONE;
     }
-    else if (MFX_HANDLE_GFXS3DCONTROL == type && pHdl != NULL)
-    {
-        *pHdl = m_pS3DControl;
-
-        return MFX_ERR_NONE;
-    }
     return MFX_ERR_UNSUPPORTED;
 }
 
 mfxStatus CD3D9Device::SetHandle(mfxHandleType type, mfxHDL hdl)
 {
-    if (MFX_HANDLE_GFXS3DCONTROL == type && hdl != NULL)
-    {
-        m_pS3DControl = (IGFXS3DControl*)hdl;
-        return MFX_ERR_NONE;
-    }
-    else if (MFX_HANDLE_DEVICEWINDOW == type && hdl != NULL) //for render window handle
+    if (MFX_HANDLE_DEVICEWINDOW == type && hdl != NULL) //for render window handle
     {
         m_D3DPP.hDeviceWindow = (HWND)hdl;
         return MFX_ERR_NONE;
@@ -329,16 +315,13 @@ mfxStatus CD3D9Device::RenderFrame(mfxFrameSurface1 * pSurface, mfxFrameAllocato
 {
     HRESULT hr = S_OK;
 
-    if (!(1 == m_nViews || (2 == m_nViews && NULL != m_pS3DControl)))
+    // Rendering of MVC is not supported
+    if (2 == m_nViews)
         return MFX_ERR_UNDEFINED_BEHAVIOR;
 
     MSDK_CHECK_POINTER(pSurface, MFX_ERR_NULL_PTR);
     MSDK_CHECK_POINTER(m_pDeviceManager9, MFX_ERR_NOT_INITIALIZED);
     MSDK_CHECK_POINTER(pmfxAlloc, MFX_ERR_NULL_PTR);
-
-    // don't try to render second view if output rect changed since first view
-    if (2 == m_nViews && (0 != pSurface->Info.FrameId.ViewId))
-        return MFX_ERR_NONE;
 
     hr = m_pD3DD9->TestCooperativeLevel();
 
@@ -374,7 +357,7 @@ mfxStatus CD3D9Device::RenderFrame(mfxFrameSurface1 * pSurface, mfxFrameAllocato
         return MFX_ERR_UNKNOWN;
     }
 
-    if (SUCCEEDED(hr)&& (1 == m_nViews || pSurface->Info.FrameId.ViewId == 1))
+    if (SUCCEEDED(hr))
     {
         hr = m_pD3DD9->Present(NULL, NULL, NULL, NULL);
     }
@@ -384,22 +367,13 @@ mfxStatus CD3D9Device::RenderFrame(mfxFrameSurface1 * pSurface, mfxFrameAllocato
 
 mfxStatus CD3D9Device::CreateVideoProcessors()
 {
-    if (!(1 == m_nViews || (2 == m_nViews && NULL != m_pS3DControl)))
+    if (2 == m_nViews)
         return MFX_ERR_UNDEFINED_BEHAVIOR;
 
    MSDK_SAFE_RELEASE(m_pDXVAVP_Left);
    MSDK_SAFE_RELEASE(m_pDXVAVP_Right);
 
    HRESULT hr ;
-
-   if (2 == m_nViews && NULL != m_pS3DControl)
-   {
-       hr = m_pS3DControl->SetDevice(m_pDeviceManager9);
-       if (FAILED(hr))
-       {
-           return MFX_ERR_DEVICE_FAILED;
-       }
-   }
 
    ZeroMemory(&m_backBufferDesc, sizeof(m_backBufferDesc));
    IDirect3DSurface9 *backBufferTmp = NULL;
@@ -416,31 +390,6 @@ mfxStatus CD3D9Device::CreateVideoProcessors()
            (void**)&m_pDXVAVPS);
    }
 
-   if (2 == m_nViews)
-   {
-        // Activate L channel
-        if (SUCCEEDED(hr))
-        {
-           hr = m_pS3DControl->SelectLeftView();
-        }
-
-        if (SUCCEEDED(hr))
-        {
-           // Create VPP device for the L channel
-           hr = m_pDXVAVPS->CreateVideoProcessor(DXVA2_VideoProcProgressiveDevice,
-               &m_VideoDesc,
-               m_D3DPP.BackBufferFormat,
-               1,
-               &m_pDXVAVP_Left);
-        }
-
-        // Activate R channel
-        if (SUCCEEDED(hr))
-        {
-           hr = m_pS3DControl->SelectRightView();
-        }
-
-   }
    if (SUCCEEDED(hr))
    {
        hr = m_pDXVAVPS->CreateVideoProcessor(DXVA2_VideoProcProgressiveDevice,

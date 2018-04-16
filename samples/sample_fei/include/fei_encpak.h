@@ -87,9 +87,6 @@ public:
                     bool   & bSigleFieldProcessing);
 
     mfxStatus FillParameters();
-#if MFX_VERSION < 1023
-    mfxStatus FillRefInfo(iTask* eTask);
-#endif // MFX_VERSION < 1023
     mfxStatus InitFrameParams(iTask* eTask);
     mfxStatus AllocateSufficientBuffer();
     mfxStatus EncPakOneFrame(iTask* eTask);

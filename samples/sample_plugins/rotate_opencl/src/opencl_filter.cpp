@@ -167,6 +167,23 @@ cl_int OpenCLFilterBase::InitPlatform()
 
         for(std::vector<cl_device_id>::iterator deviceIt = devices.begin(); deviceIt != devices.end(); ++deviceIt)
         {
+            cl_uint deviceVendorId = 0;
+
+            error = clGetDeviceInfo(*deviceIt, CL_DEVICE_VENDOR_ID, sizeof(deviceVendorId), &deviceVendorId, NULL);
+
+            if (error)
+            {
+                log.error() << "OpenCLFilter: Couldn't get the device vendor id."
+                    << " Error code: " << error << endl;
+                continue;
+            }
+
+            // Skip non-Intel devices
+            if (deviceVendorId != 0x8086)
+            {
+                continue;
+            }
+
             size_t extNamesBufferSize = 0;
 
             error = clGetDeviceInfo(*deviceIt, CL_DEVICE_EXTENSIONS, 0, NULL, &extNamesBufferSize);

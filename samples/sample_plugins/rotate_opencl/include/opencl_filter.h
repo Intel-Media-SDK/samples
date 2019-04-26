@@ -21,12 +21,19 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include <iostream>
 #include <stdexcept>
+#include <string>
+#include <vector>
+
+#define CL_USE_DEPRECATED_OPENCL_1_1_APIS
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <CL/cl.h>
 
 #include "mfxvideo++.h"
 #include "logger.h"
 
-#define INIT_CL_EXT_FUNC(x) x = (x ## _fn)clGetExtensionFunctionAddress(#x);
+#define DECL_CL_EXT_FUNC(func_name) func_name##_fn func_name
+#define INIT_CL_EXT_FUNC(platform_id, func_name) \
+    (func_name = (func_name##_fn)clGetExtensionFunctionAddressForPlatform(platform_id, #func_name))
 #define SAFE_OCL_FREE(P, FREE_FUNC) { if (P) { FREE_FUNC(P); P = NULL; } }
 
 typedef struct {
@@ -104,6 +111,7 @@ protected: // variables
     int                                 m_currentHeight;
 
     std::vector<OCL_YUV_kernel>         m_kernels;
+    std::vector<std::string>            m_requiredOclExtensions;
 
     static const size_t c_shared_surfaces_num = 2; // In and Out
     static const size_t c_ocl_surface_buffers_num = 2*c_shared_surfaces_num; // YIn, UVIn, YOut, UVOut
